@@ -48,7 +48,7 @@ interface Enumerator<T>
 interface Sequence<T>
 {
 	enumerate(): Enumerator<T>;
-	forEach?(iteratee: Iteratee<T>): void;
+	forEach?(iteratee: Predicate<T>): boolean;
 }
 
 export default
@@ -78,8 +78,10 @@ class Query<T> implements Iterable<T>
 	aggregate<R>(aggregator: Aggregator<T, R>, seedValue: R)
 	{
 		let accumulator = seedValue;
-		forEach(this.sequence, it =>
-			accumulator = aggregator(accumulator, it));
+		forEach(this.sequence, it => {
+			accumulator = aggregator(accumulator, it);
+			return true;
+		});
 		return accumulator;
 	}
 
@@ -99,6 +101,10 @@ class Query<T> implements Iterable<T>
 	selectMany<R>(selector: Selector<T, Queryable<R>>)
 	{
 		return new Query(new SelectManySeq(this.sequence, selector));
+	}
+
+	take(count: number) {
+		return new Query(new TakeSeq(this.sequence, count));
 	}
 
 	toArray()
@@ -137,9 +143,12 @@ class ArrayLikeSeq<T> implements Sequence<T>
 			},
 		};
 	}
-	forEach(iteratee: Iteratee<T>) {
-		for (let i = 0, len = this.array.length; i < len; ++i)
-			iteratee(this.array[i]);
+	forEach(iteratee: Predicate<T>) {
+		for (let i = 0, len = this.array.length; i < len; ++i) {
+			if (!iteratee(this.array[i]))
+				return false;
+		}
+		return true;
 	}
 }
 
@@ -168,8 +177,8 @@ class SelectSeq<T, U> implements Sequence<U>
 			},
 		};
 	}
-	forEach(iteratee: Iteratee<U>) {
-		forEach(this.sequence, it => iteratee(this.selector(it)));
+	forEach(iteratee: Predicate<U>) {
+		return forEach(this.sequence, it => iteratee(this.selector(it)));
 	}
 }
 
@@ -205,11 +214,43 @@ class SelectManySeq<T, U> implements Sequence<U>
 			},
 		};
 	}
-	forEach(iteratee: Iteratee<U>) {
-		forEach(this.sequence, it => {
+	forEach(iteratee: Predicate<U>) {
+		return forEach(this.sequence, it => {
 			const picks = sequenceOf(this.selector(it));
-			forEach(picks, iteratee);
+			return forEach(picks, iteratee);
 		});
+	}
+}
+
+class TakeSeq<T> implements Sequence<T>
+{
+	private count: number;
+	private sequence: Sequence<T>;
+
+	constructor(sequence: Sequence<T>, count: number) {
+		this.sequence = sequence;
+		this.count = count;
+	}
+	enumerate() {
+		const iter = this.sequence.enumerate();
+		let left = this.count;
+		let value: T;
+		return {
+			get current() {
+				return value;
+			},
+			moveNext() {
+				if (left-- == 0 || !iter.moveNext())
+					return false;
+				value = iter.current;
+				return true;
+			},
+		};
+	}
+	forEach(iteratee: Predicate<T>) {
+		let left = this.count;
+		return forEach(this.sequence, (value: T) =>
+			left-- > 0 ? iteratee(value) : false);
 	}
 }
 
@@ -240,10 +281,11 @@ class WhereSeq<T> implements Sequence<T>
 			},
 		};
 	}
-	forEach(iteratee: Iteratee<T>) {
-		forEach(this.sequence, it => {
-			if (this.predicate(it))
-				iteratee(it);
+	forEach(iteratee: Predicate<T>) {
+		return forEach(this.sequence, it => {
+			return this.predicate(it)
+				? iteratee(it)
+				: true;
 		});
 	}
 }
@@ -276,17 +318,28 @@ class ZipSeq<T, U, R> implements Sequence<R>
 			},
 		};
 	}
+	forEach(iteratee: Predicate<R>) {
+		const rIter = this.rightSeq.enumerate();
+		return forEach(this.leftSeq, (value: T) => {
+			if (!rIter.moveNext())
+				return false;
+			return iteratee(this.selector(value, rIter.current));
+		});
+	}
 }
 
-function forEach<T>(sequence: Sequence<T>, iteratee: Iteratee<T>)
+function forEach<T>(sequence: Sequence<T>, iteratee: Predicate<T>)
 {
 	if (sequence.forEach !== undefined) {
-		sequence.forEach(iteratee);
+		return sequence.forEach(iteratee);
 	}
 	else {
 		const iter = sequence.enumerate();
-		while (iter.moveNext())
-			iteratee(iter.current);
+		while (iter.moveNext()) {
+			if (!iteratee(iter.current))
+				return false;
+		}
+		return true;
 	}
 }
 
