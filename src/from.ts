@@ -30,7 +30,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
 **/
 
-type Queryable<T> = T[] | ArrayLike<T> | Query<T>;
+type Queryable<T> = T[] | ArrayLike<T> | Iterable<T> | Query<T>;
 
 type Aggregator<T, R> = (accumulator: R, value: T) => R;
 type Iteratee<T> = (value: T) => void;
@@ -146,6 +146,36 @@ class ArrayLikeSeq<T> implements Sequence<T>
 	forEach(iteratee: Predicate<T>) {
 		for (let i = 0, len = this.array.length; i < len; ++i) {
 			if (!iteratee(this.array[i]))
+				return false;
+		}
+		return true;
+	}
+}
+
+class IterableSeq<T> implements Sequence<T>
+{
+	private source: Iterable<T>;
+
+	constructor(source: Iterable<T>) {
+		this.source = source;
+	}
+	enumerate() {
+		const source = this.source;
+		const iter = this.source[Symbol.iterator]();
+		let result: IteratorResult<T>;
+		return {
+			get current() {
+				return result.value;
+			},
+			moveNext() {
+				result = iter.next();
+				return !result.done;
+			},
+		};
+	}
+	forEach(iteratee: Predicate<T>) {
+		for (const value of this.source) {
+			if (!iteratee(value))
 				return false;
 		}
 		return true;
@@ -345,7 +375,7 @@ function forEach<T>(sequence: Sequence<T>, iteratee: Predicate<T>)
 
 function sequenceOf<T>(source: Queryable<T>)
 {
-	return source instanceof Query
-		? source.sequence
-		: new ArrayLikeSeq(source);
+	return source instanceof Query ? source.sequence
+		: 'length' in source ? new ArrayLikeSeq(source)
+		: new IterableSeq(source);
 }
