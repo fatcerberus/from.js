@@ -1,6 +1,6 @@
 /*
- *  Oozaru JavaScript game engine
- *  Copyright (c) 2015-2018, Fat Cerberus
+ *  from.js - LINQ-to-Objects for JavaScript
+ *  Copyright (c) 2019, Fat Cerberus
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
 **/
 
-type Source<T> = T[] | ArrayLike<T> | Query<T>;
+type Queryable<T> = T[] | ArrayLike<T> | Query<T>;
 
 type Aggregator<T, R> = (accumulator: R, value: T) => R;
 type Iteratee<T> = (value: T) => void;
@@ -39,18 +39,22 @@ type Predicate<T> = (value: T) => boolean;
 type Selector<T, R> = (value: T) => R;
 type ZipSelector<T, U, R> = (lValue: T, rValue: U) => R;
 
-interface Sequence<T>
+interface Enumerator<T>
 {
 	readonly current: T;
-	forEach?(iteratee: Iteratee<T>): void;
 	moveNext(): boolean;
-	reset(): void;
+}
+
+interface Sequence<T>
+{
+	enumerate(): Enumerator<T>;
+	forEach?(iteratee: Iteratee<T>): void;
 }
 
 export default
-function from<T>(source: Source<T>)
+function from<T>(source: Queryable<T>)
 {
-	return new Query(enumerate(source));
+	return new Query(sequenceOf(source));
 }
 
 class Query<T> implements Iterable<T>
@@ -66,9 +70,9 @@ class Query<T> implements Iterable<T>
 
 	*[Symbol.iterator]()
 	{
-		this.sequence.reset();
-		while (this.sequence.moveNext())
-			yield this.sequence.current;
+		const iter = this.sequence.enumerate();
+		while (iter.moveNext())
+			yield iter.current;
 	}
 
 	aggregate<R>(aggregator: Aggregator<T, R>, seedValue: R)
@@ -79,13 +83,12 @@ class Query<T> implements Iterable<T>
 		return accumulator;
 	}
 
-	join<U, R>(innerSource: Source<U>, predicate: JoinPredicate<T, U>, selector: ZipSelector<T, U, R>)
+	join<U, R>(innerSource: Queryable<U>, predicate: JoinPredicate<T, U>, selector: ZipSelector<T, U, R>)
 	{
 		return this.selectMany(lValue =>
 			from(innerSource)
 				.where(it => predicate(lValue, it))
-				.select(it => selector(lValue, it))
-				.toArray());
+				.select(it => selector(lValue, it)));
 	}
 
 	select<R>(selector: Selector<T, R>)
@@ -93,7 +96,7 @@ class Query<T> implements Iterable<T>
 		return new Query(new SelectSeq(this.sequence, selector));
 	}
 
-	selectMany<R>(selector: Selector<T, Source<R>>)
+	selectMany<R>(selector: Selector<T, Queryable<R>>)
 	{
 		return new Query(new SelectManySeq(this.sequence, selector));
 	}
@@ -108,34 +111,35 @@ class Query<T> implements Iterable<T>
 		return new Query(new WhereSeq(this.sequence, predicate));
 	}
 
-	zip<U, R>(zipSource: Source<U>, selector: ZipSelector<T, U, R>)
+	zip<U, R>(zipSource: Queryable<U>, selector: ZipSelector<T, U, R>)
 	{
-		return new Query(new ZipSeq(this.sequence, enumerate(zipSource), selector));
+		return new Query(new ZipSeq(this.sequence, sequenceOf(zipSource), selector));
 	}
 }
 
-class ArraySeq<T> implements Sequence<T>
+class ArrayLikeSeq<T> implements Sequence<T>
 {
 	private array: ArrayLike<T>;
-	private index: number;
-	private length: number;
 
 	constructor(array: ArrayLike<T>) {
 		this.array = array;
 	}
-	get current() {
-		return this.array[this.index];
+	enumerate() {
+		const source = this.array;
+		const length = source.length;
+		let index = -1;
+		return {
+			get current() {
+				return source[index];
+			},
+			moveNext() {
+				return ++index < length;
+			},
+		};
 	}
 	forEach(iteratee: Iteratee<T>) {
 		for (let i = 0, len = this.array.length; i < len; ++i)
 			iteratee(this.array[i]);
-	}
-	moveNext() {
-		return ++this.index < this.length;
-	}
-	reset() {
-		this.index = -1;
-		this.length = this.array.length;
 	}
 }
 
@@ -143,63 +147,69 @@ class SelectSeq<T, U> implements Sequence<U>
 {
 	private selector: Selector<T, U>;
 	private sequence: Sequence<T>;
-	private value: U;
 
 	constructor(sequence: Sequence<T>, selector: Selector<T, U>) {
 		this.sequence = sequence;
 		this.selector = selector;
 	}
-	get current() {
-		return this.value;
+	enumerate() {
+		const iter = this.sequence.enumerate();
+		const selector = this.selector;
+		let value: U;
+		return {
+			get current() {
+				return value;
+			},
+			moveNext() {
+				if (!iter.moveNext())
+					return false;
+				value = selector(iter.current);
+				return true;
+			},
+		};
 	}
 	forEach(iteratee: Iteratee<U>) {
 		forEach(this.sequence, it => iteratee(this.selector(it)));
-	}
-	moveNext() {
-		if (!this.sequence.moveNext())
-			return false;
-		this.value = this.selector(this.sequence.current);
-		return true;
-	}
-	reset() {
-		this.sequence.reset();
 	}
 }
 
 class SelectManySeq<T, U> implements Sequence<U>
 {
-	private selector: Selector<T, Source<U>>;
+	private selector: Selector<T, Queryable<U>>;
 	private sequence: Sequence<T>;
-	private subSequence?: Sequence<U>;
-	private value: U;
 
-	constructor(sequence: Sequence<T>, selector: Selector<T, Source<U>>) {
+	constructor(sequence: Sequence<T>, selector: Selector<T, Queryable<U>>) {
 		this.sequence = sequence;
 		this.selector = selector;
 	}
-	get current() {
-		return this.value;
+	enumerate() {
+		const iter = this.sequence.enumerate();
+		const selector = this.selector;
+		let innerIter: Enumerator<U> | undefined;
+		let value: U;
+		return {
+			get current() {
+				return value;
+			},
+			moveNext() {
+				if (innerIter === undefined) {
+					if (!iter.moveNext())
+						return false;
+					const seq = sequenceOf(selector(iter.current));
+					innerIter = seq.enumerate();
+				}
+				if (!innerIter.moveNext())
+					return false;
+				value = innerIter.current;
+				return true;
+			},
+		};
 	}
 	forEach(iteratee: Iteratee<U>) {
 		forEach(this.sequence, it => {
-			const picks = enumerate(this.selector(it));
+			const picks = sequenceOf(this.selector(it));
 			forEach(picks, iteratee);
 		});
-	}
-	moveNext() {
-		if (this.subSequence === undefined || !this.subSequence.moveNext()) {
-			if (!this.sequence.moveNext())
-				return false;
-			const source = this.selector(this.sequence.current);
-			this.subSequence = enumerate(source);
-			if (!this.subSequence.moveNext())
-				return false;
-		}
-		this.value = this.subSequence.current;
-		return true;
-	}
-	reset() {
-		this.sequence.reset();
 	}
 }
 
@@ -207,31 +217,34 @@ class WhereSeq<T> implements Sequence<T>
 {
 	private predicate: Predicate<T>;
 	private sequence: Sequence<T>;
-	private value: T;
 
 	constructor(sequence: Sequence<T>, predicate: Predicate<T>) {
 		this.sequence = sequence;
 		this.predicate = predicate;
 	}
-	get current() {
-		return this.value;
+	enumerate() {
+		const iter = this.sequence.enumerate();
+		const predicate = this.predicate;
+		let value: T;
+		return {
+			get current() {
+				return value;
+			},
+			moveNext() {
+				while (iter.moveNext()) {
+					value = iter.current;
+					if (predicate(value))
+						return true;
+				}
+				return false;
+			},
+		};
 	}
 	forEach(iteratee: Iteratee<T>) {
 		forEach(this.sequence, it => {
 			if (this.predicate(it))
 				iteratee(it);
 		});
-	}
-	moveNext() {
-		while (this.sequence.moveNext()) {
-			this.value = this.sequence.current;
-			if (this.predicate(this.value))
-				return true;
-		}
-		return false;
-	}
-	reset() {
-		this.sequence.reset();
 	}
 }
 
@@ -240,34 +253,29 @@ class ZipSeq<T, U, R> implements Sequence<R>
 	private selector: ZipSelector<T, U, R>;
 	private leftSeq: Sequence<T>;
 	private rightSeq: Sequence<U>;
-	private value: R;
 
 	constructor(leftSeq: Sequence<T>, rightSeq: Sequence<U>, selector: ZipSelector<T, U, R>) {
 		this.leftSeq = leftSeq;
 		this.rightSeq = rightSeq;
 		this.selector = selector;
 	}
-	get current() {
-		return this.value;
+	enumerate() {
+		const lIter = this.leftSeq.enumerate();
+		const rIter = this.rightSeq.enumerate();
+		const selector = this.selector;
+		let value: R;
+		return {
+			get current() {
+				return value;
+			},
+			moveNext() {
+				if (!lIter.moveNext() || !rIter.moveNext())
+					return false;
+				value = selector(lIter.current, rIter.current);
+				return true;
+			},
+		};
 	}
-	moveNext() {
-		if (this.leftSeq.moveNext() && this.rightSeq.moveNext()) {
-			this.value = this.selector(this.leftSeq.current, this.rightSeq.current);
-			return true;
-		}
-		return false;
-	}
-	reset() {
-		this.leftSeq.reset();
-		this.rightSeq.reset();
-	}
-}
-
-function enumerate<T>(source: Source<T>)
-{
-	return source instanceof Query
-		? source.sequence
-		: new ArraySeq(source);
 }
 
 function forEach<T>(sequence: Sequence<T>, iteratee: Iteratee<T>)
@@ -276,8 +284,15 @@ function forEach<T>(sequence: Sequence<T>, iteratee: Iteratee<T>)
 		sequence.forEach(iteratee);
 	}
 	else {
-		sequence.reset();
-		while (sequence.moveNext())
-			iteratee(sequence.current);
+		const iter = sequence.enumerate();
+		while (iter.moveNext())
+			iteratee(iter.current);
 	}
+}
+
+function sequenceOf<T>(source: Queryable<T>)
+{
+	return source instanceof Query
+		? source.sequence
+		: new ArrayLikeSeq(source);
 }
