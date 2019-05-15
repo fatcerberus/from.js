@@ -69,8 +69,8 @@ class Query<T> implements Iterable<T>
 	aggregate<R>(aggregator: Aggregator<T, R>, seedValue: R)
 	{
 		let accumulator = seedValue;
-		iterateOver(this.sequence, it => {
-			accumulator = aggregator(accumulator, it);
+		iterateOver(this.sequence, value => {
+			accumulator = aggregator(accumulator, value);
 			return true;
 		});
 		return accumulator;
@@ -107,9 +107,19 @@ class Query<T> implements Iterable<T>
 		return new Query(new SkipSeq(this.sequence, count));
 	}
 
+	skipWhile(predicate: Predicate<T>)
+	{
+		return new Query(new SkipWhileSeq(this.sequence, predicate));
+	}
+
 	take(count: number)
 	{
 		return new Query(new TakeSeq(this.sequence, count));
+	}
+
+	takeWhile(predicate: Predicate<T>)
+	{
+		return new Query(new TakeWhileSeq(this.sequence, predicate));
 	}
 
 	toArray()
@@ -224,8 +234,39 @@ class SkipSeq<T> implements Sequence<T>
 	}
 	forEach(iteratee: Predicate<T>) {
 		let skipsLeft = this.count;
-		return iterateOver(this.sequence, (value: T) =>
-			skipsLeft-- <= 0 ? iteratee(value) : true);
+		return iterateOver(this.sequence, value => {
+			return skipsLeft-- <= 0 ? iteratee(value)
+				: true;
+		});
+	}
+}
+
+class SkipWhileSeq<T> implements Sequence<T>
+{
+	private sequence: Sequence<T>;
+	private predicate: Predicate<T>;
+
+	constructor(sequence: Sequence<T>, predicate: Predicate<T>) {
+		this.sequence = sequence;
+		this.predicate = predicate;
+	}
+	*[Symbol.iterator]() {
+		let onTheTake = false;
+		for (const value of this.sequence) {
+			if (!onTheTake && this.predicate(value))
+				onTheTake = true;
+			if (onTheTake)
+				yield value;
+		}
+	}
+	forEach(iteratee: Predicate<T>) {
+		let onTheTake = false;
+		return iterateOver(this.sequence, value => {
+			if (!onTheTake && !this.predicate(value))
+				onTheTake = true;
+			return onTheTake ? iteratee(value)
+				: false;
+		});
 	}
 }
 
@@ -241,15 +282,42 @@ class TakeSeq<T> implements Sequence<T>
 	*[Symbol.iterator]() {
 		let takesLeft = this.count;
 		for (const value of this.sequence) {
-			yield value;
-			if (--takesLeft <= 0)
+			if (takesLeft-- <= 0)
 				break;
+			yield value;
 		}
 	}
 	forEach(iteratee: Predicate<T>) {
 		let takesLeft = this.count;
-		return iterateOver(this.sequence, (value: T) =>
-			takesLeft-- > 0 ? iteratee(value) : false);
+		return iterateOver(this.sequence, value => {
+			return takesLeft-- > 0 ? iteratee(value)
+				: false
+		});
+	}
+}
+
+class TakeWhileSeq<T> implements Sequence<T>
+{
+	private sequence: Sequence<T>;
+	private predicate: Predicate<T>;
+
+	constructor(sequence: Sequence<T>, predicate: Predicate<T>) {
+		this.sequence = sequence;
+		this.predicate = predicate;
+	}
+	*[Symbol.iterator]() {
+		for (const value of this.sequence) {
+			if (!this.predicate(value))
+				break;
+			yield value;
+		}
+	}
+	forEach(iteratee: Predicate<T>) {
+		return iterateOver(this.sequence, value => {
+			if (!this.predicate(value))
+				return false;
+			return iteratee(value);
+		});
 	}
 }
 
@@ -269,9 +337,8 @@ class WhereSeq<T> implements Sequence<T>
 		}
 	}
 	forEach(iteratee: Predicate<T>) {
-		return iterateOver(this.sequence, it => {
-			return this.predicate(it)
-				? iteratee(it)
+		return iterateOver(this.sequence, value => {
+			return this.predicate(value) ? iteratee(value)
 				: true;
 		});
 	}
@@ -300,7 +367,7 @@ class ZipSeq<T, U, R> implements Sequence<R>
 	forEach(iteratee: Predicate<R>) {
 		const iter = this.rightSeq[Symbol.iterator]();
 		let result: IteratorResult<U>;
-		return iterateOver(this.leftSeq, (value: T) => {
+		return iterateOver(this.leftSeq, value => {
 			if ((result = iter.next()).done)
 				return false;
 			return iteratee(this.selector(value, result.value));
@@ -311,11 +378,11 @@ class ZipSeq<T, U, R> implements Sequence<R>
 function iterateOver<T>(sequence: Sequence<T>, iteratee: Predicate<T>)
 {
 	if (sequence.forEach !== undefined) {
-		// prefer forEach if it exists (better performance)
+		// prefer forEach if it exists (better performance!)
 		return sequence.forEach(iteratee);
 	}
 	else {
-		// no forEach, fall back on iterator interface
+		// no forEach, fall back on [Symbol.iterator]
 		for (const value of sequence) {
 			if (!iteratee(value))
 				return false;
