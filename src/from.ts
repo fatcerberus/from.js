@@ -76,11 +76,58 @@ class Query<T> implements Iterable<T>
 		return accumulator;
 	}
 
+	all(predicate: Predicate<T>)
+	{
+		let matched = true;
+		iterateOver(this.sequence, value => {
+			matched = predicate(value);
+			return matched;
+		});
+		return matched;
+	}
+
+	any(predicate: Predicate<T>)
+	{
+		let foundIt = false;
+		iterateOver(this.sequence, value => {
+			foundIt = predicate(value);
+			return !foundIt;
+		});
+		return foundIt;
+	}
+
+	count()
+	{
+		let n = 0;
+		iterateOver(this.sequence, () => (++n, true));
+		return n;
+	}
+
+	elementAt(position: number)
+	{
+		let index = 0;
+		let element: T | undefined;
+		iterateOver(this.sequence, value => {
+			element = value;
+			return index !== position;
+		});
+		return element;
+	}
+
 	forEach(iteratee: Iteratee<T>)
 	{
 		iterateOver(this.sequence, it => {
 			iteratee(it);
 			return true;
+		});
+	}
+
+	groupJoin<U, R>(innerSource: Queryable<U>, predicate: JoinPredicate<T, U>, selector: ZipSelector<T, Iterable<U>, R>)
+	{
+		return this.select(lValue => {
+			const rValues = from(innerSource)
+				.where(it => predicate(lValue, it));
+			return selector(lValue, rValues);
 		});
 	}
 
