@@ -96,6 +96,16 @@ class Query<T> implements Iterable<T>
 		return foundIt;
 	}
 
+	besides(iteratee: Iteratee<T>)
+	{
+		return this.select(it => (iteratee(it), it));
+	}
+
+	concat(...sources: Queryable<T>[])
+	{
+		return new Query(new ConcatSeq(this.sequence, sources));
+	}
+
 	count()
 	{
 		let n = 0;
@@ -122,21 +132,31 @@ class Query<T> implements Iterable<T>
 		});
 	}
 
-	groupJoin<U, R>(innerSource: Queryable<U>, predicate: JoinPredicate<T, U>, selector: ZipSelector<T, Iterable<U>, R>)
+	groupJoin<U, R>(joinSource: Queryable<U>, predicate: JoinPredicate<T, U>, selector: ZipSelector<T, Iterable<U>, R>)
 	{
 		return this.select(lValue => {
-			const rValues = from(innerSource)
+			const rValues = from(joinSource)
 				.where(it => predicate(lValue, it));
 			return selector(lValue, rValues);
 		});
 	}
 
-	join<U, R>(innerSource: Queryable<U>, predicate: JoinPredicate<T, U>, selector: ZipSelector<T, U, R>)
+	join<U, R>(joinSource: Queryable<U>, predicate: JoinPredicate<T, U>, selector: ZipSelector<T, U, R>)
 	{
 		return this.selectMany(lValue =>
-			from(innerSource)
+			from(joinSource)
 				.where(it => predicate(lValue, it))
 				.select(it => selector(lValue, it)));
+	}
+
+	orderBy<K>(keySelector: Selector<T, K>, direction: 'asc' | 'desc' = 'asc')
+	{
+		return new Query(new OrderBySeq(this.sequence, keySelector, direction === 'desc'));
+	}
+
+	plus(...values: T[])
+	{
+		return new Query(new ConcatSeq(this.sequence, [ values ]));
 	}
 
 	select<R>(selector: Selector<T, R>)
@@ -218,6 +238,77 @@ class IterableSeq<T> implements Sequence<T>
 	forEach(iteratee: Predicate<T>) {
 		for (const value of this.source) {
 			if (!iteratee(value))
+				return false;
+		}
+		return true;
+	}
+}
+
+class ConcatSeq<T> implements Sequence<T>
+{
+	private sources: Queryable<T>[];
+	private sequence: Sequence<T>;
+
+	constructor(sequence: Sequence<T>, sources: Queryable<T>[]) {
+		this.sequence = sequence;
+		this.sources = sources;
+	}
+	*[Symbol.iterator]() {
+		yield* this.sequence;
+		for (let i = 0, len = this.sources.length; i < len; ++i)
+			yield* sequenceOf(this.sources[i]);
+	}
+	forEach(iteratee: Predicate<T>) {
+		if (!iterateOver(this.sequence, iteratee))
+			return false;
+		for (let i = 0, len = this.sources.length; i < len; ++i) {
+			if (!iterateOver(sequenceOf(this.sources[i]), iteratee))
+				return false;
+		}
+		return true;
+	}
+}
+
+class OrderBySeq<T, K> implements Sequence<T>
+{
+	private descending: boolean;
+	private keySelector: Selector<T, K>;
+	private sequence: Sequence<T>;
+
+	constructor(sequence: Sequence<T>, keySelector: Selector<T, K>, descending: boolean) {
+		this.sequence = sequence;
+		this.descending = descending;
+		this.keySelector = keySelector;
+	}
+	*[Symbol.iterator]() {
+		type KeyValuePair = { key: K, value: T };
+		const pairs: KeyValuePair[] = [];
+		iterateOver(this.sequence, value => {
+			const key = this.keySelector(value);
+			pairs.push({ key, value });
+			return true;
+		});
+		const comparator = this.descending
+			? (b: KeyValuePair, a: KeyValuePair) => a.key < b.key ? -1 : a.key > b.key ? +1 : 0
+			: (a: KeyValuePair, b: KeyValuePair) => a.key < b.key ? -1 : a.key > b.key ? +1 : 0;
+		pairs.sort(comparator);
+		for (let i = 0, len = pairs.length; i < len; ++i)
+			yield pairs[i].value;
+	}
+	forEach(iteratee: Predicate<T>) {
+		type KeyValuePair = { key: K, value: T };
+		const pairs: KeyValuePair[] = [];
+		iterateOver(this.sequence, value => {
+			const key = this.keySelector(value);
+			pairs.push({ key, value });
+			return true;
+		});
+		const comparator = this.descending
+			? (b: KeyValuePair, a: KeyValuePair) => a.key < b.key ? -1 : a.key > b.key ? +1 : 0
+			: (a: KeyValuePair, b: KeyValuePair) => a.key < b.key ? -1 : a.key > b.key ? +1 : 0;
+		pairs.sort(comparator);
+		for (let i = 0, len = pairs.length; i < len; ++i) {
+			if (!iteratee(pairs[i].value))
 				return false;
 		}
 		return true;
