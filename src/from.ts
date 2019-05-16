@@ -86,14 +86,35 @@ class Query<T> implements Iterable<T>
 		return matched;
 	}
 
+	allIn(values: Queryable<T>)
+	{
+		const whitelist = new Set(sequenceOf(values));
+		return this.all(it => whitelist.has(it));
+	}
+
 	any(predicate: Predicate<T>)
 	{
 		let foundIt = false;
 		iterateOver(this.sequence, value => {
-			foundIt = predicate(value);
+			if (predicate(value))
+				foundIt = true;
 			return !foundIt;
 		});
 		return foundIt;
+	}
+
+	anyIn(values: Queryable<T>)
+	{
+		const whitelist = new Set(sequenceOf(values));
+		return this.any(it => whitelist.has(it));
+	}
+
+	anyIs(value: T)
+	{
+		const predicate = value !== value
+			? (toCheck: T) => toCheck !== toCheck
+			: (toCheck: T) => toCheck === value;
+		return this.any(predicate);
 	}
 
 	besides(iteratee: Iteratee<T>)
@@ -258,25 +279,6 @@ class ArrayLikeSeq<T> implements Sequence<T>
 	forEach(iteratee: Predicate<T>) {
 		for (let i = 0, len = this.source.length; i < len; ++i) {
 			if (!iteratee(this.source[i]))
-				return false;
-		}
-		return true;
-	}
-}
-
-class IterableSeq<T> implements Sequence<T>
-{
-	private source: Iterable<T>;
-
-	constructor(source: Iterable<T>) {
-		this.source = source;
-	}
-	[Symbol.iterator]() {
-		return this.source[Symbol.iterator]();
-	}
-	forEach(iteratee: Predicate<T>) {
-		for (const value of this.source) {
-			if (!iteratee(value))
 				return false;
 		}
 		return true;
@@ -659,6 +661,7 @@ function iterateOver<T>(sequence: Sequence<T>, iteratee: Predicate<T>)
 
 function sequenceOf<T>(source: Queryable<T>)
 {
-	return 'length' in source ? new ArrayLikeSeq(source)
-		: new IterableSeq(source);
+	return 'length' in source
+		? new ArrayLikeSeq(source)
+		: source;
 }
