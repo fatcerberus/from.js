@@ -113,6 +113,11 @@ class Query<T> implements Iterable<T>
 		return n;
 	}
 
+	distinct<K>(keySelector: Selector<T, K>)
+	{
+		return new Query(new DistinctSeq(this.sequence, keySelector));
+	}
+
 	elementAt(position: number)
 	{
 		let index = 0;
@@ -199,6 +204,11 @@ class Query<T> implements Iterable<T>
 		return new Query(new WhereSeq(this.sequence, predicate));
 	}
 
+	without(...values: T[])
+	{
+		return new Query(new WithoutSeq(this.sequence, new Set(values)));
+	}
+
 	zip<U, R>(zipSource: Queryable<U>, selector: ZipSelector<T, U, R>)
 	{
 		return new Query(new ZipSeq(this.sequence, sequenceOf(zipSource), selector));
@@ -266,6 +276,39 @@ class ConcatSeq<T> implements Sequence<T>
 				return false;
 		}
 		return true;
+	}
+}
+
+class DistinctSeq<T, K> implements Sequence<T>
+{
+	private keySelector: Selector<T, K>
+	private sequence: Sequence<T>;
+
+	constructor(sequence: Sequence<T>, keySelector: Selector<T, K>) {
+		this.sequence = sequence;
+		this.keySelector = keySelector;
+	}
+	*[Symbol.iterator]() {
+		const foundKeys = new Set<K>();
+		for (const value of this.sequence) {
+			const key = this.keySelector(value);
+			if (!foundKeys.has(key)) {
+				foundKeys.add(key);
+				yield value;
+			}
+		}
+	}
+	forEach(iteratee: Predicate<T>) {
+		const foundKeys = new Set<K>();
+		return iterateOver(this.sequence, value => {
+			const key = this.keySelector(value);
+			if (!foundKeys.has(key)) {
+				foundKeys.add(key);
+				if (!iteratee(value))
+					return false;
+			}
+			return true;
+		});
 	}
 }
 
@@ -477,6 +520,29 @@ class WhereSeq<T> implements Sequence<T>
 	forEach(iteratee: Predicate<T>) {
 		return iterateOver(this.sequence, value => {
 			return this.predicate(value) ? iteratee(value)
+				: true;
+		});
+	}
+}
+
+class WithoutSeq<T> implements Sequence<T>
+{
+	private sequence: Sequence<T>;
+	private values: Set<T>
+
+	constructor(sequence: Sequence<T>, values: Set<T>) {
+		this.sequence = sequence;
+		this.values = values;
+	}
+	*[Symbol.iterator]() {
+		for (const value of this.sequence) {
+			if (!this.values.has(value))
+				yield value;
+		}
+	}
+	forEach(iteratee: Predicate<T>) {
+		return iterateOver(this.sequence, value => {
+			return !this.values.has(value) ? iteratee(value)
 				: true;
 		});
 	}
