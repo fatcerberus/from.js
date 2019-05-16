@@ -135,6 +135,19 @@ class Query<T> implements Iterable<T>
 		return new Query(new WithoutSeq(this.sequence, exclusions));
 	}
 
+	first(predicate: Predicate<T>)
+	{
+		let result: T | undefined;
+		iterateOver(this.sequence, value => {
+			if (predicate(value)) {
+				result = value;
+				return false;
+			}
+			return true;
+		});
+		return result;
+	}
+
 	forEach(iteratee: Iteratee<T>)
 	{
 		iterateOver(this.sequence, it => {
@@ -170,6 +183,11 @@ class Query<T> implements Iterable<T>
 		return new Query(new ConcatSeq(this.sequence, [ values ]));
 	}
 
+	reverse()
+	{
+		return this.thru(values => values.reverse());
+	}
+
 	select<R>(selector: Selector<T, R>)
 	{
 		return new Query(new SelectSeq(this.sequence, selector));
@@ -200,9 +218,14 @@ class Query<T> implements Iterable<T>
 		return new Query(new TakeWhileSeq(this.sequence, predicate));
 	}
 
+	thru<R>(replacer: Selector<T[], Queryable<R>>)
+	{
+		return new Query(new ThruSeq(this.sequence, replacer));
+	}
+
 	toArray()
 	{
-		return this.aggregate((a, it) => (a.push(it), a), [] as T[])
+		return arrayOf(this.sequence);
 	}
 
 	where(predicate: Predicate<T>)
@@ -508,6 +531,29 @@ class TakeWhileSeq<T> implements Sequence<T>
 	}
 }
 
+class ThruSeq<T, R> implements Sequence<R>
+{
+	private replacer: Selector<T[], Queryable<R>>;
+	private sequence: Sequence<T>;
+
+	constructor(sequence: Sequence<T>, replacer: Selector<T[], Queryable<R>>) {
+		this.sequence = sequence;
+		this.replacer = replacer;
+	}
+	[Symbol.iterator]() {
+		const oldValues: T[] = arrayOf(this.sequence);
+		const newValues = this.replacer(oldValues);
+		return sequenceOf(newValues)[Symbol.iterator]();
+	}
+	forEach(iteratee: Predicate<R>) {
+		const oldValues: T[] = arrayOf(this.sequence);
+		const newValues = this.replacer(oldValues);
+		return iterateOver(sequenceOf(newValues), value => {
+			return iteratee(value);
+		});
+	}
+}
+
 class WhereSeq<T> implements Sequence<T>
 {
 	private predicate: Predicate<T>;
@@ -583,6 +629,16 @@ class ZipSeq<T, U, R> implements Sequence<R>
 			return iteratee(this.selector(value, result.value));
 		});
 	}
+}
+
+function arrayOf<T>(sequence: Sequence<T>)
+{
+	const values: T[] = [];
+	iterateOver(sequence, (value) => {
+		values.push(value);
+		return true;
+	});
+	return values;
 }
 
 function iterateOver<T>(sequence: Sequence<T>, iteratee: Predicate<T>)
