@@ -30,7 +30,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
 **/
 
-type Queryable<T> = T[] | ArrayLike<T> | Iterable<T> | Query<T>;
+type Queryable<T> = T[] | ArrayLike<T> | Iterable<T>;
 
 type Aggregator<T, R> = (accumulator: R, value: T) => R;
 type Iteratee<T> = (value: T) => void;
@@ -127,6 +127,12 @@ class Query<T> implements Iterable<T>
 			return index !== position;
 		});
 		return element;
+	}
+
+	except(...blacklists: Queryable<T>[])
+	{
+		const exclusions = new Set(from(blacklists).selectMany(it => it));
+		return new Query(new WithoutSeq(this.sequence, exclusions));
 	}
 
 	forEach(iteratee: Iteratee<T>)
@@ -597,7 +603,6 @@ function iterateOver<T>(sequence: Sequence<T>, iteratee: Predicate<T>)
 
 function sequenceOf<T>(source: Queryable<T>)
 {
-	return source instanceof Query ? source.sequence
-		: 'length' in source ? new ArrayLikeSeq(source)
+	return 'length' in source ? new ArrayLikeSeq(source)
 		: new IterableSeq(source);
 }
