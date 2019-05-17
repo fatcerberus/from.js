@@ -117,7 +117,12 @@ class Query<T> implements Iterable<T>
 		return this.any(predicate);
 	}
 
-	average(this: T extends number ? Query<T> : never)
+	apply<V, R>(this: Query<(value: V) => R>, values: Queryable<V>)
+	{
+		return this.selectMany(f => from(values).select(f));
+	}
+
+	average(this: Query<number>)
 	{
 		let count = 0;
 		let sum = 0;
@@ -183,7 +188,7 @@ class Query<T> implements Iterable<T>
 
 	forEach(iteratee: Iteratee<T>)
 	{
-		iterateOver(this.sequence, it => {
+		return iterateOver(this.sequence, it => {
 			iteratee(it);
 			return true;
 		});
@@ -242,7 +247,7 @@ class Query<T> implements Iterable<T>
 		return new Query(new SelectManySeq(this.sequence, selector));
 	}
 
-	sum(this: T extends number ? Query<T> : never)
+	sum(this: Query<number>)
 	{
 		return this.aggregate((acc, value) => acc + value, 0);
 	}
@@ -449,8 +454,8 @@ class SelectManySeq<T, U> implements Sequence<U>
 			yield* sequenceOf(this.selector(value));
 	}
 	forEach(iteratee: Predicate<U>) {
-		return iterateOver(this.sequence, it => {
-			const results = sequenceOf(this.selector(it));
+		return iterateOver(this.sequence, (value) => {
+			const results = sequenceOf(this.selector(value));
 			return iterateOver(results, iteratee);
 		});
 	}
