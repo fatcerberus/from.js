@@ -44,7 +44,7 @@ interface Sequence<T> extends Iterable<T>
 	forEach?(iteratee: Predicate<T>): boolean;
 }
 
-export default
+export = from;
 function from<T>(source: Queryable<T>)
 {
 	return new Query(sequenceOf(source));
@@ -88,8 +88,8 @@ class Query<T> implements Iterable<T>
 
 	allIn(values: Queryable<T>)
 	{
-		const whitelist = new Set(sequenceOf(values));
-		return this.all(it => whitelist.has(it));
+		const valueSet = new Set(sequenceOf(values));
+		return this.all(it => valueSet.has(it));
 	}
 
 	any(predicate: Predicate<T>)
@@ -105,8 +105,8 @@ class Query<T> implements Iterable<T>
 
 	anyIn(values: Queryable<T>)
 	{
-		const whitelist = new Set(sequenceOf(values));
-		return this.any(it => whitelist.has(it));
+		const valueSet = new Set(sequenceOf(values));
+		return this.any(it => valueSet.has(it));
 	}
 
 	anyIs(value: T)
@@ -115,6 +115,18 @@ class Query<T> implements Iterable<T>
 			? (toCheck: T) => toCheck !== toCheck
 			: (toCheck: T) => toCheck === value;
 		return this.any(predicate);
+	}
+
+	average(this: T extends number ? Query<T> : never)
+	{
+		let count = 0;
+		let sum = 0;
+		iterateOver(this.sequence, (value) => {
+			++count;
+			sum += value;
+			return true;
+		});
+		return sum / count;
 	}
 
 	besides(iteratee: Iteratee<T>)
@@ -194,6 +206,17 @@ class Query<T> implements Iterable<T>
 				.select(it => selector(lValue, it)));
 	}
 
+	last(predicate: Predicate<T>)
+	{
+		let result: T | undefined;
+		iterateOver(this.sequence, (value) => {
+			if (predicate(value))
+				result = value;
+			return true;
+		});
+		return result;
+	}
+
 	orderBy<K>(keySelector: Selector<T, K>, direction: 'asc' | 'desc' = 'asc')
 	{
 		return new Query(new OrderBySeq(this.sequence, keySelector, direction === 'desc'));
@@ -217,6 +240,11 @@ class Query<T> implements Iterable<T>
 	selectMany<R>(selector: Selector<T, Queryable<R>>)
 	{
 		return new Query(new SelectManySeq(this.sequence, selector));
+	}
+
+	sum(this: T extends number ? Query<T> : never)
+	{
+		return this.aggregate((acc, value) => acc + value, 0);
 	}
 
 	skip(count: number)
