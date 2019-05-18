@@ -227,6 +227,11 @@ class Query<T> implements Iterable<T>
 		return result;
 	}
 
+	ofType(type: 'bigint' | 'boolean' | 'function' | 'number' | 'object' | 'string' | 'symbol')
+	{
+		return this.where(it => typeof it === type);
+	}
+
 	orderBy<K>(keySelector: Selector<T, K>, direction: 'asc' | 'desc' = 'asc')
 	{
 		return new Query(new OrderBySeq(this.sequence, keySelector, direction === 'desc'));
@@ -262,6 +267,11 @@ class Query<T> implements Iterable<T>
 		return new Query(new SkipSeq(this.sequence, count));
 	}
 
+	skipLast(count: number)
+	{
+		return new Query(new SkipLastSeq(this.sequence, count));
+	}
+
 	skipWhile(predicate: Predicate<T>)
 	{
 		return new Query(new SkipWhileSeq(this.sequence, predicate));
@@ -270,6 +280,15 @@ class Query<T> implements Iterable<T>
 	take(count: number)
 	{
 		return new Query(new TakeSeq(this.sequence, count));
+	}
+
+	takeLast(count: number)
+	{
+		// takeLast can't actually be lazy because we don't know where to start
+		// until we know for sure we've seen the final element.
+		return this.thru((values) => {
+			return values.slice(-count);
+		});
 	}
 
 	takeWhile(predicate: Predicate<T>)
@@ -487,6 +506,42 @@ class SkipSeq<T> implements Sequence<T>
 		return iterateOver(this.sequence, value => {
 			return skipsLeft-- <= 0 ? iteratee(value)
 				: true;
+		});
+	}
+}
+
+class SkipLastSeq<T> implements Sequence<T>
+{
+	private count: number;
+	private sequence: Sequence<T>;
+
+	constructor(sequence: Sequence<T>, count: number) {
+		this.sequence = sequence;
+		this.count = count;
+	}
+	*[Symbol.iterator]() {
+		const buffer = new Array<T>(this.count);
+		let ptr = 0;
+		let skipsLeft = this.count;
+		for (const value of this.sequence) {
+			if (skipsLeft-- <= 0)
+				yield buffer[ptr];
+			buffer[ptr] = value;
+			ptr = (ptr + 1) % this.count;
+		}
+	}
+	forEach(iteratee: Predicate<T>) {
+		const buffer = new Array<T>(this.count);
+		let ptr = 0;
+		let skipsLeft = this.count;
+		return iterateOver(this.sequence, (value) => {
+			if (skipsLeft-- <= 0) {
+				if (!iteratee(buffer[ptr]))
+					return false;
+			}
+			buffer[ptr] = value;
+			ptr = (ptr + 1) % this.count;
+			return true;
 		});
 	}
 }
