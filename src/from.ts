@@ -39,6 +39,27 @@ type Predicate<T> = (value: T) => boolean;
 type Selector<T, R> = (value: T) => R;
 type ZipSelector<T, U, R> = (lValue: T, rValue: U) => R;
 
+type TypeOfResult =
+	| 'bigint'
+	| 'boolean'
+	| 'function'
+	| 'number'
+	| 'object'
+	| 'string'
+	| 'symbol'
+	| 'undefined';
+
+type TypeOf<K extends TypeOfResult> = {
+	bigint: bigint,
+	boolean: boolean,
+	function: (...args: never[]) => unknown,
+	number: number,
+	object: object | null,
+	string: string,
+	symbol: symbol,
+	undefined: undefined,
+}[K];
+
 interface Sequence<T> extends Iterable<T>
 {
 	forEach?(iteratee: Predicate<T>): boolean;
@@ -227,9 +248,10 @@ class Query<T> implements Iterable<T>
 		return result;
 	}
 
-	ofType(type: 'bigint' | 'boolean' | 'function' | 'number' | 'object' | 'string' | 'symbol')
+	ofType<K extends TypeOfResult>(...types: K[]): Query<TypeOf<K>>
 	{
-		return this.where(it => typeof it === type);
+		const typeSet = new Set<TypeOfResult>(types);
+		return this.where(it => typeSet.has(typeof it));
 	}
 
 	orderBy<K>(keySelector: Selector<T, K>, direction: 'asc' | 'desc' = 'asc')
