@@ -119,7 +119,7 @@ class Query<T> implements Iterable<T>
 
 	apply<V, R>(this: Query<(value: V) => R>, values: Queryable<V>)
 	{
-		return this.selectMany(f => from(values).select(f));
+		return this.selectMany(fn => from(values).select(fn));
 	}
 
 	average(this: Query<number>)
@@ -201,6 +201,11 @@ class Query<T> implements Iterable<T>
 				.where(it => predicate(lValue, it));
 			return selector(lValue, rValues);
 		});
+	}
+
+	invoke<V extends unknown[], R>(this: Query<(...args: V) => R>, ...args: V)
+	{
+		return this.select(fn => fn(...args));
 	}
 
 	join<U, R>(joinSource: Queryable<U>, predicate: JoinPredicate<T, U>, selector: ZipSelector<T, U, R>)
