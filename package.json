@@ -2,12 +2,16 @@
   "name": "from.js",
   "version": "0.1.0",
   "description": "LINQ to Objects for JavaScript",
-  "main": "from.js",
+  "main": "dist/from.js",
+  "types": "dist/from.d.ts",
+  "directories": {
+    "lib": "dist/"
+  },
   "files": [
-    "dist"
+    "dist/"
   ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "prepare": "tsc"
   },
   "repository": {
     "type": "git",

@@ -256,7 +256,7 @@ class Query<T> implements Iterable<T>
 
 	orderBy<K>(keySelector: Selector<T, K>, direction: 'asc' | 'desc' = 'asc')
 	{
-		return new SortedQuery(new OrderBySeq(this.sequence, keySelector, direction === 'desc'));
+		return new SortQuery(new OrderBySeq(this.sequence, keySelector, direction === 'desc'));
 	}
 
 	plus(...values: T[])
@@ -344,7 +344,7 @@ class Query<T> implements Iterable<T>
 	}
 }
 
-class SortedQuery<T, K> extends Query<T>
+class SortQuery<T, K> extends Query<T>
 {
 	constructor(source: OrderBySeq<T, K>)
 	{
@@ -353,7 +353,7 @@ class SortedQuery<T, K> extends Query<T>
 
 	thenBy<K>(keySelector: Selector<T, K>, direction: 'asc' | 'desc' = 'asc')
 	{
-		return new SortedQuery(new OrderBySeq(this.sequence, keySelector, direction === 'desc', true));
+		return new SortQuery(new OrderBySeq(this.sequence, keySelector, direction === 'desc', true));
 	}
 }
 
