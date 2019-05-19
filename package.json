@@ -1,0 +1,32 @@
+{
+  "name": "from.js",
+  "version": "0.1.0",
+  "description": "LINQ to Objects for JavaScript",
+  "main": "from.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fatcerberus/from.js.git"
+  },
+  "keywords": [
+    "linq",
+    "query",
+    "array",
+    "functional",
+    "lazy"
+  ],
+  "author": "Bruce Pascoe",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/fatcerberus/from.js/issues"
+  },
+  "homepage": "https://github.com/fatcerberus/from.js#readme",
+  "devDependencies": {
+    "typescript": "^3.4.5"
+  }
+}

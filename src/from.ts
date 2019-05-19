@@ -75,7 +75,7 @@ class Query<T> implements Iterable<T>
 {
 	readonly [Symbol.toStringTag] = "Query";
 
-	private sequence: Sequence<T>;
+	protected sequence: Sequence<T>;
 
 	constructor(sequence: Sequence<T>)
 	{
@@ -256,7 +256,7 @@ class Query<T> implements Iterable<T>
 
 	orderBy<K>(keySelector: Selector<T, K>, direction: 'asc' | 'desc' = 'asc')
 	{
-		return new Query(new OrderBySeq(this.sequence, keySelector, direction === 'desc'));
+		return new SortedQuery(new OrderBySeq(this.sequence, keySelector, direction === 'desc'));
 	}
 
 	plus(...values: T[])
@@ -344,6 +344,19 @@ class Query<T> implements Iterable<T>
 	}
 }
 
+class SortedQuery<T, K> extends Query<T>
+{
+	constructor(source: OrderBySeq<T, K>)
+	{
+		super(source);
+	}
+
+	thenBy<K>(keySelector: Selector<T, K>, direction: 'asc' | 'desc' = 'asc')
+	{
+		return new SortedQuery(new OrderBySeq(this.sequence, keySelector, direction === 'desc', true));
+	}
+}
+
 class ArrayLikeSeq<T> implements Sequence<T>
 {
 	private source: ArrayLike<T>;
@@ -424,47 +437,57 @@ class DistinctSeq<T, K> implements Sequence<T>
 
 class OrderBySeq<T, K> implements Sequence<T>
 {
-	private descending: boolean;
-	private keySelector: Selector<T, K>;
+	private keyMakers: { keySelector: Selector<T, K>, descending: boolean }[];
 	private sequence: Sequence<T>;
 
-	constructor(sequence: Sequence<T>, keySelector: Selector<T, K>, descending: boolean) {
-		this.sequence = sequence;
-		this.descending = descending;
-		this.keySelector = keySelector;
+	constructor(sequence: Sequence<T>, keySelector: Selector<T, K>, descending: boolean, auxiliary = false) {
+		const keyMaker = { keySelector, descending };
+		if (auxiliary && sequence instanceof OrderBySeq) {
+			this.sequence = sequence.sequence;
+			this.keyMakers = [ ...sequence.keyMakers, keyMaker ];
+		}
+		else {
+			this.sequence = sequence;
+			this.keyMakers = [ keyMaker ];
+		}
 	}
 	*[Symbol.iterator]() {
-		type KeyValuePair = { key: K, value: T };
-		const pairs: KeyValuePair[] = [];
-		iterateOver(this.sequence, value => {
-			const key = this.keySelector(value);
-			pairs.push({ key, value });
-			return true;
-		});
-		const comparator = this.descending
-			? (b: KeyValuePair, a: KeyValuePair) => a.key < b.key ? -1 : a.key > b.key ? +1 : 0
-			: (a: KeyValuePair, b: KeyValuePair) => a.key < b.key ? -1 : a.key > b.key ? +1 : 0;
-		pairs.sort(comparator);
-		for (let i = 0, len = pairs.length; i < len; ++i)
-			yield pairs[i].value;
+		const results = this.computeResults();
+		for (let i = 0, len = results.length; i < len; ++i)
+			yield results[i].value;
 	}
 	forEach(iteratee: Predicate<T>) {
-		type KeyValuePair = { key: K, value: T };
-		const pairs: KeyValuePair[] = [];
-		iterateOver(this.sequence, value => {
-			const key = this.keySelector(value);
-			pairs.push({ key, value });
-			return true;
-		});
-		const comparator = this.descending
-			? (b: KeyValuePair, a: KeyValuePair) => a.key < b.key ? -1 : a.key > b.key ? +1 : 0
-			: (a: KeyValuePair, b: KeyValuePair) => a.key < b.key ? -1 : a.key > b.key ? +1 : 0;
-		pairs.sort(comparator);
-		for (let i = 0, len = pairs.length; i < len; ++i) {
-			if (!iteratee(pairs[i].value))
+		const results = this.computeResults();
+		for (let i = 0, len = results.length; i < len; ++i) {
+			if (!iteratee(results[i].value))
 				return false;
 		}
 		return true;
+	}
+	private computeResults() {
+		const keys: K[][] = [];
+		const results: { index: number, value: T }[] = [];
+		let index = 0;
+		iterateOver(this.sequence, (value) => {
+			const keyList = new Array<K>(this.keyMakers.length);
+			for (let i = 0, len = this.keyMakers.length; i < len; ++i)
+				keyList[i] = this.keyMakers[i].keySelector(value);
+			keys.push(keyList);
+			results.push({ index: index++, value });
+			return true;
+		});
+		return results.sort((a, b) => {
+			const aKeys = keys[a.index];
+			const bKeys = keys[b.index];
+			for (let i = 0, len = this.keyMakers.length; i < len; ++i) {
+				const invert = this.keyMakers[i].descending;
+				if (aKeys[i] < bKeys[i])
+					return invert ? +1 : -1;
+				else if (aKeys[i] > bKeys[i])
+					return invert ? -1 : +1;
+			}
+			return a.index - b.index;
+		});
 	}
 }
 
