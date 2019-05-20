@@ -1,5 +1,5 @@
 /*
- *  from.js - LINQ-to-Objects for JavaScript
+ *  from.js - LINQ for JavaScript
  *  Copyright (c) 2019, Fat Cerberus
  *  All rights reserved.
  *
@@ -429,14 +429,19 @@ class ArrayLikeSeq<T> implements Sequence<T>
 {
 	private source: ArrayLike<T>;
 
-	constructor(source: ArrayLike<T>) {
+	constructor(source: ArrayLike<T>)
+	{
 		this.source = source;
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		for (let i = 0, len = this.source.length; i < len; ++i)
 			yield this.source[i];
 	}
-	forEach(iteratee: Predicate<T>) {
+
+	forEach(iteratee: Predicate<T>)
+	{
 		for (let i = 0, len = this.source.length; i < len; ++i) {
 			if (!iteratee(this.source[i]))
 				return false;
@@ -449,15 +454,20 @@ class ConcatSeq<T> implements Sequence<T>
 {
 	private sources: Sequence<T>[] = [];
 
-	constructor(...sources: Queryable<T>[]) {
+	constructor(...sources: Queryable<T>[])
+	{
 		for (let i = 0, len = sources.length; i < len; ++i)
 			this.sources.push(sequenceOf(sources[i]));
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		for (let i = 0, len = this.sources.length; i < len; ++i)
 			yield* this.sources[i];
 	}
-	forEach(iteratee: Predicate<T>) {
+
+	forEach(iteratee: Predicate<T>)
+	{
 		for (let i = 0, len = this.sources.length; i < len; ++i) {
 			if (!iterateOver(this.sources[i], iteratee))
 				return false;
@@ -471,11 +481,14 @@ class DistinctSeq<T, K> implements Sequence<T>
 	private keySelector: Selector<T, K>
 	private source: Sequence<T>;
 
-	constructor(source: Sequence<T>, keySelector: Selector<T, K>) {
+	constructor(source: Sequence<T>, keySelector: Selector<T, K>)
+	{
 		this.source = source;
 		this.keySelector = keySelector;
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		const foundKeys = new Set<K>();
 		for (const value of this.source) {
 			const key = this.keySelector(value);
@@ -485,7 +498,9 @@ class DistinctSeq<T, K> implements Sequence<T>
 			}
 		}
 	}
-	forEach(iteratee: Predicate<T>) {
+
+	forEach(iteratee: Predicate<T>)
+	{
 		const foundKeys = new Set<K>();
 		return iterateOver(this.source, value => {
 			const key = this.keySelector(value);
@@ -504,7 +519,8 @@ class OrderBySeq<T, K> implements Sequence<T>
 	private keyMakers: { keySelector: Selector<T, K>, descending: boolean }[];
 	private source: Sequence<T>;
 
-	constructor(source: Sequence<T>, keySelector: Selector<T, K>, descending: boolean, auxiliary = false) {
+	constructor(source: Sequence<T>, keySelector: Selector<T, K>, descending: boolean, auxiliary = false)
+	{
 		const keyMaker = { keySelector, descending };
 		if (auxiliary && source instanceof OrderBySeq) {
 			this.source = source.source;
@@ -515,12 +531,16 @@ class OrderBySeq<T, K> implements Sequence<T>
 			this.keyMakers = [ keyMaker ];
 		}
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		const results = this.computeResults();
 		for (let i = 0, len = results.length; i < len; ++i)
 			yield results[i].value;
 	}
-	forEach(iteratee: Predicate<T>) {
+
+	forEach(iteratee: Predicate<T>)
+	{
 		const results = this.computeResults();
 		for (let i = 0, len = results.length; i < len; ++i) {
 			if (!iteratee(results[i].value))
@@ -528,7 +548,9 @@ class OrderBySeq<T, K> implements Sequence<T>
 		}
 		return true;
 	}
-	private computeResults() {
+
+	private computeResults()
+	{
 		const keyLists: K[][] = [];
 		const results: { index: number, value: T }[] = [];
 		let index = 0;
@@ -560,15 +582,20 @@ class SelectSeq<T, U> implements Sequence<U>
 	private selector: Selector<T, U>;
 	private source: Sequence<T>;
 
-	constructor(source: Sequence<T>, selector: Selector<T, U>) {
+	constructor(source: Sequence<T>, selector: Selector<T, U>)
+	{
 		this.source = source;
 		this.selector = selector;
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		for (const value of this.source)
 			yield this.selector(value);
 	}
-	forEach(iteratee: Predicate<U>) {
+
+	forEach(iteratee: Predicate<U>)
+	{
 		return iterateOver(this.source, it => iteratee(this.selector(it)));
 	}
 }
@@ -578,15 +605,20 @@ class SelectManySeq<T, U> implements Sequence<U>
 	private selector: Selector<T, Queryable<U>>;
 	private source: Sequence<T>;
 
-	constructor(source: Sequence<T>, selector: Selector<T, Queryable<U>>) {
+	constructor(source: Sequence<T>, selector: Selector<T, Queryable<U>>)
+	{
 		this.source = source;
 		this.selector = selector;
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		for (const value of this.source)
 			yield* sequenceOf(this.selector(value));
 	}
-	forEach(iteratee: Predicate<U>) {
+
+	forEach(iteratee: Predicate<U>)
+	{
 		return iterateOver(this.source, (value) => {
 			const results = sequenceOf(this.selector(value));
 			return iterateOver(results, iteratee);
@@ -599,18 +631,23 @@ class SkipSeq<T> implements Sequence<T>
 	private count: number;
 	private source: Sequence<T>;
 
-	constructor(source: Sequence<T>, count: number) {
+	constructor(source: Sequence<T>, count: number)
+	{
 		this.source = source;
 		this.count = count;
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		let skipsLeft = this.count;
 		for (const value of this.source) {
 			if (skipsLeft-- <= 0)
 				yield value;
 		}
 	}
-	forEach(iteratee: Predicate<T>) {
+
+	forEach(iteratee: Predicate<T>)
+	{
 		let skipsLeft = this.count;
 		return iterateOver(this.source, value => {
 			return skipsLeft-- <= 0 ? iteratee(value)
@@ -624,11 +661,14 @@ class SkipLastSeq<T> implements Sequence<T>
 	private count: number;
 	private source: Sequence<T>;
 
-	constructor(source: Sequence<T>, count: number) {
+	constructor(source: Sequence<T>, count: number)
+	{
 		this.source = source;
 		this.count = count;
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		const buffer = new Array<T>(this.count);
 		let ptr = 0;
 		let skipsLeft = this.count;
@@ -639,7 +679,9 @@ class SkipLastSeq<T> implements Sequence<T>
 			ptr = (ptr + 1) % this.count;
 		}
 	}
-	forEach(iteratee: Predicate<T>) {
+
+	forEach(iteratee: Predicate<T>)
+	{
 		const buffer = new Array<T>(this.count);
 		let ptr = 0;
 		let skipsLeft = this.count;
@@ -660,11 +702,14 @@ class SkipWhileSeq<T> implements Sequence<T>
 	private predicate: Predicate<T>;
 	private source: Sequence<T>;
 
-	constructor(source: Sequence<T>, predicate: Predicate<T>) {
+	constructor(source: Sequence<T>, predicate: Predicate<T>)
+	{
 		this.source = source;
 		this.predicate = predicate;
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		let onTheTake = false;
 		for (const value of this.source) {
 			if (!onTheTake && this.predicate(value))
@@ -673,7 +718,9 @@ class SkipWhileSeq<T> implements Sequence<T>
 				yield value;
 		}
 	}
-	forEach(iteratee: Predicate<T>) {
+
+	forEach(iteratee: Predicate<T>)
+	{
 		let onTheTake = false;
 		return iterateOver(this.source, value => {
 			if (!onTheTake && !this.predicate(value))
@@ -689,11 +736,14 @@ class TakeSeq<T> implements Sequence<T>
 	private count: number;
 	private source: Sequence<T>;
 
-	constructor(source: Sequence<T>, count: number) {
+	constructor(source: Sequence<T>, count: number)
+	{
 		this.source = source;
 		this.count = count;
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		let takesLeft = this.count;
 		for (const value of this.source) {
 			if (takesLeft-- <= 0)
@@ -701,7 +751,9 @@ class TakeSeq<T> implements Sequence<T>
 			yield value;
 		}
 	}
-	forEach(iteratee: Predicate<T>) {
+
+	forEach(iteratee: Predicate<T>)
+	{
 		let takesLeft = this.count;
 		return iterateOver(this.source, value => {
 			return takesLeft-- > 0 ? iteratee(value)
@@ -715,18 +767,23 @@ class TakeWhileSeq<T> implements Sequence<T>
 	private predicate: Predicate<T>;
 	private source: Sequence<T>;
 
-	constructor(source: Sequence<T>, predicate: Predicate<T>) {
+	constructor(source: Sequence<T>, predicate: Predicate<T>)
+	{
 		this.source = source;
 		this.predicate = predicate;
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		for (const value of this.source) {
 			if (!this.predicate(value))
 				break;
 			yield value;
 		}
 	}
-	forEach(iteratee: Predicate<T>) {
+
+	forEach(iteratee: Predicate<T>)
+	{
 		return iterateOver(this.source, value => {
 			if (!this.predicate(value))
 				return false;
@@ -740,16 +797,21 @@ class ThruSeq<T, R> implements Sequence<R>
 	private source: Sequence<T>;
 	private transformer: Selector<T[], Queryable<R>>;
 
-	constructor(source: Sequence<T>, transformer: Selector<T[], Queryable<R>>) {
+	constructor(source: Sequence<T>, transformer: Selector<T[], Queryable<R>>)
+	{
 		this.source = source;
 		this.transformer = transformer;
 	}
-	[Symbol.iterator]() {
+
+	[Symbol.iterator]()
+	{
 		const oldValues: T[] = arrayOf(this.source);
 		const newValues = this.transformer(oldValues);
 		return sequenceOf(newValues)[Symbol.iterator]();
 	}
-	forEach(iteratee: Predicate<R>) {
+
+	forEach(iteratee: Predicate<R>)
+	{
 		const oldValues: T[] = arrayOf(this.source);
 		const newValues = this.transformer(oldValues);
 		return iterateOver(sequenceOf(newValues), value => {
@@ -763,17 +825,22 @@ class WhereSeq<T> implements Sequence<T>
 	private predicate: Predicate<T>;
 	private source: Sequence<T>;
 
-	constructor(source: Sequence<T>, predicate: Predicate<T>) {
+	constructor(source: Sequence<T>, predicate: Predicate<T>)
+	{
 		this.source = source;
 		this.predicate = predicate;
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		for (const value of this.source) {
 			if (this.predicate(value))
 				yield value;
 		}
 	}
-	forEach(iteratee: Predicate<T>) {
+
+	forEach(iteratee: Predicate<T>)
+	{
 		return iterateOver(this.source, value => {
 			return this.predicate(value) ? iteratee(value)
 				: true;
@@ -786,17 +853,22 @@ class WithoutSeq<T> implements Sequence<T>
 	private source: Sequence<T>;
 	private values: Set<T>
 
-	constructor(source: Sequence<T>, values: Set<T>) {
+	constructor(source: Sequence<T>, values: Set<T>)
+	{
 		this.source = source;
 		this.values = values;
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		for (const value of this.source) {
 			if (!this.values.has(value))
 				yield value;
 		}
 	}
-	forEach(iteratee: Predicate<T>) {
+
+	forEach(iteratee: Predicate<T>)
+	{
 		return iterateOver(this.source, value => {
 			return !this.values.has(value) ? iteratee(value)
 				: true;
@@ -810,12 +882,15 @@ class ZipSeq<T, U, R> implements Sequence<R>
 	private rightSource: Sequence<U>;
 	private selector: ZipSelector<T, U, R>;
 
-	constructor(leftSource: Sequence<T>, rightSource: Sequence<U>, selector: ZipSelector<T, U, R>) {
+	constructor(leftSource: Sequence<T>, rightSource: Sequence<U>, selector: ZipSelector<T, U, R>)
+	{
 		this.leftSource = leftSource;
 		this.rightSource = rightSource;
 		this.selector = selector;
 	}
-	*[Symbol.iterator]() {
+
+	*[Symbol.iterator]()
+	{
 		const iter = this.rightSource[Symbol.iterator]();
 		let result: IteratorResult<U>;
 		for (const value of this.leftSource) {
@@ -824,7 +899,9 @@ class ZipSeq<T, U, R> implements Sequence<R>
 			yield this.selector(value, result.value);
 		}
 	}
-	forEach(iteratee: Predicate<R>) {
+
+	forEach(iteratee: Predicate<R>)
+	{
 		const iter = this.rightSource[Symbol.iterator]();
 		let result: IteratorResult<U>;
 		return iterateOver(this.leftSource, value => {
