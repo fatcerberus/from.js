@@ -172,7 +172,7 @@ class Query<T> implements Iterable<T>
 		return n;
 	}
 
-	countBy<K extends object>(keySelector: Selector<T, K>)
+	countBy<K>(keySelector: Selector<T, K>)
 	{
 		const counts = new Map<K, number>();
 		iterateOver(this.source, (value) => {
@@ -229,7 +229,7 @@ class Query<T> implements Iterable<T>
 		});
 	}
 
-	groupBy<K extends object>(keySelector: Selector<T, K>)
+	groupBy<K>(keySelector: Selector<T, K>)
 	{
 		const groups = new Map<K, T[]>();
 		iterateOver(this.source, (value) => {
