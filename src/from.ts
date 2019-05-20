@@ -172,6 +172,20 @@ class Query<T> implements Iterable<T>
 		return n;
 	}
 
+	countBy<K extends object>(keySelector: Selector<T, K>)
+	{
+		const counts = new Map<K, number>();
+		iterateOver(this.source, (value) => {
+			const key = keySelector(value);
+			let count = counts.get(key);
+			if (count === undefined)
+				count = 0;
+			counts.set(key, count++);
+			return true;
+		});
+		return counts;
+	}
+
 	distinct<K>(keySelector: Selector<T, K>)
 	{
 		return new Query(new DistinctSeq(this.source, keySelector));
@@ -213,6 +227,20 @@ class Query<T> implements Iterable<T>
 			iteratee(it);
 			return true;
 		});
+	}
+
+	groupBy<K extends object>(keySelector: Selector<T, K>)
+	{
+		const groups = new Map<K, T[]>();
+		iterateOver(this.source, (value) => {
+			const key = keySelector(value);
+			let list = groups.get(key);
+			if (list === undefined)
+				groups.set(key, list = []);
+			list.push(value);
+			return true;
+		});
+		return groups;
 	}
 
 	groupJoin<U, R>(joinSource: Queryable<U>, predicate: JoinPredicate<T, U>, selector: ZipSelector<T, Iterable<U>, R>)
@@ -264,9 +292,36 @@ class Query<T> implements Iterable<T>
 		return new Query(new ConcatSeq(this.source, values));
 	}
 
+	random(count: number)
+	{
+		return this.thru((values) => {
+			let samples = [];
+			for (let i = 0, len = values.length; i < count; ++i) {
+				const index = Math.floor(Math.random() * len);
+				samples.push(values[index]);
+			}
+			return samples;
+		});
+	}
+
 	reverse()
 	{
 		return this.thru(values => values.reverse());
+	}
+
+	sample(count: number)
+	{
+		return this.thru((values) => {
+			const nSamples = Math.min(Math.max(count, 0), values.length);
+			for (let i = 0, len = values.length; i < nSamples; ++i) {
+				const pick = i + Math.floor(Math.random() * (len - i));
+				const value = values[pick];
+				values[pick] = values[i];
+				values[i] = value;
+			}
+			values.length = nSamples;
+			return values;
+		});
 	}
 
 	select<R>(selector: Selector<T, R>)
@@ -279,9 +334,17 @@ class Query<T> implements Iterable<T>
 		return new Query(new SelectManySeq(this.source, selector));
 	}
 
-	sum(this: Query<number>)
+	shuffle()
 	{
-		return this.aggregate((acc, value) => acc + value, 0);
+		return this.thru((values) => {
+			for (let i = 0, len = values.length - 1; i < len; ++i) {
+				const pick = i + Math.floor(Math.random() * (len - i));
+				const value = values[pick];
+				values[pick] = values[i];
+				values[i] = value;
+			}
+			return values;
+		});
 	}
 
 	skip(count: number)
@@ -297,6 +360,11 @@ class Query<T> implements Iterable<T>
 	skipWhile(predicate: Predicate<T>)
 	{
 		return new Query(new SkipWhileSeq(this.source, predicate));
+	}
+
+	sum(this: Query<number>)
+	{
+		return this.aggregate((acc, value) => acc + value, 0);
 	}
 
 	take(count: number)
