@@ -374,10 +374,10 @@ class Query<T> implements Iterable<T>
 
 	takeLast(count: number)
 	{
-		// takeLast can't actually be lazy because we don't know where to start
-		// until we know for sure we've seen the final element.
+		// takeLast can't be lazily evaluated because we don't know where to
+		// start until we've seen the final element.
 		return this.thru((values) => {
-			return values.slice(-count);
+			return count > 0 ? values.slice(-count) : [];
 		});
 	}
 
