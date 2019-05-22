@@ -37,6 +37,7 @@ type Iteratee<T> = (value: T) => void;
 type JoinPredicate<T, U> = (lValue: T, rValue: U) => boolean;
 type Predicate<T> = (value: T) => boolean;
 type Selector<T, R> = (value: T) => R;
+type TypePredicate<T, P extends T> = (value: T) => value is P;
 type ZipSelector<T, U, R> = (lValue: T, rValue: U) => R;
 
 type TypeOfResult =
@@ -59,6 +60,12 @@ type TypeOf<K extends TypeOfResult> = {
 	symbol: symbol,
 	undefined: undefined,
 }[K];
+
+interface Chungus<T>
+{
+	readonly value: T;
+	at(position: number, defaultValue: T): T;
+}
 
 interface Sequence<T> extends Iterable<T>
 {
@@ -208,6 +215,11 @@ class Query<T> implements Iterable<T>
 		return new Query(new WithoutSeq(this.source, exclusions));
 	}
 
+	fatMap<R>(selector: Selector<Chungus<T>, Queryable<R>>, windowSize = 0)
+	{
+		return new Query(new FatMapSeq(this.source, selector, windowSize));
+	}
+
 	first(predicate: Predicate<T>)
 	{
 		let result: T | undefined;
@@ -250,6 +262,16 @@ class Query<T> implements Iterable<T>
 				.where(it => predicate(lValue, it));
 			return selector(lValue, rValues);
 		});
+	}
+
+	intercalate(this: Query<Queryable<T>>, values: Queryable<T>)
+	{
+		return this.intersperse(values).selectMany(it => it);
+	}
+
+	intersperse(value: T)
+	{
+		return new Query(new IntersperseSeq(this.source, value));
 	}
 
 	invoke<V extends unknown[], R>(this: Query<(...args: V) => R>, ...args: V)
@@ -396,6 +418,8 @@ class Query<T> implements Iterable<T>
 		return arrayOf(this.source);
 	}
 
+	where<P extends T>(predicate: TypePredicate<T, P>): Query<P>
+	where(predicate: Predicate<T>): Query<T>
 	where(predicate: Predicate<T>)
 	{
 		return new Query(new WhereSeq(this.source, predicate));
@@ -514,6 +538,99 @@ class DistinctSeq<T, K> implements Sequence<T>
 	}
 }
 
+class FatMapSeq<T, R> implements Sequence<R>
+{
+	private selector: Selector<Chungus<T>, Queryable<R>>;
+	private source: Sequence<T>;
+	private windowSize: number;
+
+	constructor(source: Sequence<T>, selector: Selector<Chungus<T>, Queryable<R>>, windowSize = 1)
+	{
+		this.source = source;
+		this.selector = selector;
+		this.windowSize = windowSize;
+	}
+
+	*[Symbol.iterator]()
+	{
+		const bufferSize = this.windowSize * 2 + 1;
+		const window = new Array<T>(bufferSize);
+		let readPtr = 0;
+		let writePtr = 0;
+		let readLag = bufferSize;
+		const chungus = {
+			value: undefined as unknown as T,
+			at: (position: number, defaultValue: T) => {
+                const min = ((readPtr + bufferSize) - writePtr) % bufferSize;
+                const max = bufferSize - min;
+                if (position < -min || position >= max || Math.abs(position) > this.windowSize)
+                    return defaultValue;
+                position += bufferSize + readPtr;
+				return window[position % bufferSize];
+			}
+		}
+		for (const value of this.source) {
+			window[writePtr++] = value;
+			writePtr %= bufferSize;
+			if (--readLag <= 0) {
+				if (readLag === 0) {
+					for (let i = 0; i < this.windowSize; ++i) {
+						chungus.value = window[readPtr];
+						yield* sequenceOf(this.selector(chungus));
+						readPtr = (readPtr + 1) % bufferSize;
+					}
+				}
+				chungus.value = window[readPtr];
+				yield* sequenceOf(this.selector(chungus));
+				readPtr = (readPtr + 1) % bufferSize;
+			}
+		}
+		while (readPtr !== writePtr) {
+			chungus.value = window[readPtr];
+			yield* sequenceOf(this.selector(chungus));
+			readPtr = (readPtr + 1) % bufferSize;
+		}
+	}
+}
+
+class IntersperseSeq<T> implements Sequence<T>
+{
+	private source: Sequence<T>;
+	private value: T;
+
+	constructor(source: Sequence<T>, value: T)
+	{
+		this.source = source;
+		this.value = value;
+	}
+
+	*[Symbol.iterator]()
+	{
+		let firstElement = true;
+		for (const value of this.source) {
+			if (!firstElement)
+				yield this.value;
+			yield value;
+			firstElement = false;
+		}
+	}
+
+	forEach(iteratee: Predicate<T>)
+	{
+		let firstElement = true;
+		return iterateOver(this.source, (value) => {
+			if (!firstElement) {
+				if (!iteratee(this.value))
+					return false;
+			}
+			if (!iteratee(value))
+				return false;
+			firstElement = false;
+			return true;
+		});
+	}
+}
+
 class OrderBySeq<T, K> implements Sequence<T>
 {
 	private keyMakers: { keySelector: Selector<T, K>, descending: boolean }[];
@@ -577,12 +694,12 @@ class OrderBySeq<T, K> implements Sequence<T>
 	}
 }
 
-class SelectSeq<T, U> implements Sequence<U>
+class SelectSeq<T, R> implements Sequence<R>
 {
-	private selector: Selector<T, U>;
+	private selector: Selector<T, R>;
 	private source: Sequence<T>;
 
-	constructor(source: Sequence<T>, selector: Selector<T, U>)
+	constructor(source: Sequence<T>, selector: Selector<T, R>)
 	{
 		this.source = source;
 		this.selector = selector;
@@ -594,7 +711,7 @@ class SelectSeq<T, U> implements Sequence<U>
 			yield this.selector(value);
 	}
 
-	forEach(iteratee: Predicate<U>)
+	forEach(iteratee: Predicate<R>)
 	{
 		return iterateOver(this.source, it => iteratee(this.selector(it)));
 	}
