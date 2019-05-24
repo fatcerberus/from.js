@@ -475,30 +475,28 @@ class ArrayLikeSeq<T> implements Sequence<T>
 
 class ChungusSeq<T> implements Sequence<T>, Chungus<T>
 {
-	armSize: number;
-	buffer: T[];
-	leftArm = 0;
-	rightArm: number;
-	stride: number;
-	size = 0;
-	readPtr = 0;
-	writePtr = 0;
+	private armSize: number;
+	private buffer: T[];
+	private leftArm = -1;
+	private readPtr = -1;
+	private rightArm = 0;
+	private stride: number;
+	private writePtr = 0;
 
 	constructor(windowSize: number)
 	{
-		// it's called a Chungus because it's a ring buffer; it's round!  just
-		// like Big Chungus!  *MUNCH*
+		// it's called a chungus because, being a circular buffer, it's round...
+		// just like Big Chungus!  *MUNCH*
 		this.stride = windowSize * 2 + 1;  // this is how fat he can be
-		this.buffer = new Array<T>();
+		this.buffer = new Array<T>(this.stride);
 		this.armSize = windowSize;
-		this.rightArm = this.armSize;
 	}
 
 	*[Symbol.iterator]()
 	{
-		// it's time to circumnavigate the chungus!
+		// it's time to circumnavigate the chungus...
 		let ptr = ((this.readPtr + this.stride) - this.leftArm) % this.stride;
-		const len = Math.min(1 + this.leftArm + this.rightArm, this.buffer.length);
+		const len = 1 + this.leftArm + this.rightArm;
 		for (let i = 0; i < len; ++i, ptr = (ptr + 1) % this.stride)
 			yield this.buffer[ptr];
 	}
@@ -508,33 +506,33 @@ class ChungusSeq<T> implements Sequence<T>, Chungus<T>
 		return this.buffer[this.readPtr];
 	}
 
-	eatArm()
-	{
-		this.readPtr = (this.readPtr + 1) % this.stride;
-		return this.rightArm-- > 0;
-	}
-
-	feed(value: T)
-	{
-		this.buffer[this.writePtr] = value;
-		if (++this.writePtr >= this.stride)
-			this.writePtr = 0;
-		if (this.size++ >= this.armSize + 1) {
-			this.readPtr = (this.readPtr + 1) % this.stride;
-			if (++this.leftArm > this.armSize)
-				this.leftArm = this.armSize;
-		}
-	}
-
 	forEach(iteratee: Predicate<T>)
 	{
 		let ptr = ((this.readPtr + this.stride) - this.leftArm) % this.stride;
-		const len = Math.min(1 + this.leftArm + this.rightArm, this.buffer.length);
+		const len = 1 + this.leftArm + this.rightArm;
 		for (let i = 0; i < len; ++i, ptr = (ptr + 1) % this.stride) {
 			if (!iteratee(this.buffer[ptr]))
 				return false;
 		}
 		return true;
+	}
+
+	advance()
+	{
+		if (++this.readPtr >= this.stride)
+			this.readPtr = 0;
+		if (++this.leftArm > this.armSize)
+			this.leftArm = this.armSize;
+		return this.rightArm-- > 0;
+	}
+
+	push(value: T)
+	{
+		this.buffer[this.writePtr] = value;
+		if (++this.writePtr >= this.stride)
+			this.writePtr = 0;
+		if (++this.rightArm > this.armSize)
+			this.advance();  // *munch*
 	}
 }
 
@@ -620,11 +618,11 @@ class FatMapSeq<T, R> implements Sequence<R>
 		const chungus = new ChungusSeq<T>(this.windowSize)
 		let lag = this.windowSize + 1;
 		for (const value of this.source) {
-			chungus.feed(value);
+			chungus.push(value);
 			if (--lag <= 0)
 				yield* sequenceOf(this.selector(chungus));
 		}
-		while (chungus.eatArm()) {
+		while (chungus.advance()) {
 			yield* sequenceOf(this.selector(chungus));
 		}
 	}
