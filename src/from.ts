@@ -214,7 +214,7 @@ class Query<T> implements Iterable<T>
 		return new Query(new WithoutSeq(this.source, exclusions));
 	}
 
-	fatMap<R>(selector: Selector<Chungus<T>, Queryable<R>>, windowSize = 0)
+	fatMap<R>(selector: Selector<Chungus<T>, Queryable<R>>, windowSize = 1)
 	{
 		return new Query(new FatMapSeq(this.source, selector, windowSize));
 	}
@@ -606,7 +606,7 @@ class FatMapSeq<T, R> implements Sequence<R>
 	private source: Sequence<T>;
 	private windowSize: number;
 
-	constructor(source: Sequence<T>, selector: Selector<Chungus<T>, Queryable<R>>, windowSize = 1)
+	constructor(source: Sequence<T>, selector: Selector<Chungus<T>, Queryable<R>>, windowSize: number)
 	{
 		this.source = source;
 		this.selector = selector;
@@ -622,9 +622,8 @@ class FatMapSeq<T, R> implements Sequence<R>
 			if (--lag <= 0)
 				yield* sequenceOf(this.selector(chungus));
 		}
-		while (chungus.advance()) {
+		while (chungus.advance())
 			yield* sequenceOf(this.selector(chungus));
-		}
 	}
 
 	forEach(iteratee: Predicate<R>)
