@@ -626,6 +626,28 @@ class FatMapSeq<T, R> implements Sequence<R>
 			yield* sequenceOf(this.selector(chungus));
 		}
 	}
+
+	forEach(iteratee: Predicate<R>)
+	{
+		const chungus = new ChungusSeq<T>(this.windowSize)
+		let lag = this.windowSize + 1;
+		const keepGoing = iterateOver(this.source, (value) => {
+			chungus.push(value);
+			if (--lag <= 0) {
+				const results = sequenceOf(this.selector(chungus));
+				return iterateOver(results, iteratee);
+			}
+			return true;
+		});
+		if (!keepGoing)
+			return false;
+		while (chungus.advance()) {
+			const results = sequenceOf(this.selector(chungus));
+			if (!iterateOver(results, iteratee))
+				return false;
+		}
+		return true;
+	}
 }
 
 class IntersperseSeq<T> implements Sequence<T>
