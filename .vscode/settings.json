@@ -1,4 +1,3 @@
 {
 	"editor.rulers": [ 79, 119 ],
-	"typescript.tsdk": "node_modules\\typescript\\lib",
 }
