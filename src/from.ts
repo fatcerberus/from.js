@@ -61,10 +61,9 @@ type TypeOf<K extends TypeOfResult> = {
 	undefined: undefined,
 }[K];
 
-interface Chungus<T>
+interface Chungus<T> extends Iterable<T>
 {
 	readonly value: T;
-	at(position: number, defaultValue: T): T;
 }
 
 interface Sequence<T> extends Iterable<T>
@@ -474,6 +473,71 @@ class ArrayLikeSeq<T> implements Sequence<T>
 	}
 }
 
+class ChungusSeq<T> implements Sequence<T>, Chungus<T>
+{
+	armSize: number;
+	buffer: T[];
+	leftArm = 0;
+	rightArm: number;
+	stride: number;
+	size = 0;
+	readPtr = 0;
+	writePtr = 0;
+
+	constructor(windowSize: number)
+	{
+		// it's called a Chungus because it's a ring buffer; it's round!  just
+		// like Big Chungus!  *MUNCH*
+		this.stride = windowSize * 2 + 1;  // this is how fat he can be
+		this.buffer = new Array<T>();
+		this.armSize = windowSize;
+		this.rightArm = this.armSize;
+	}
+
+	*[Symbol.iterator]()
+	{
+		// it's time to circumnavigate the chungus!
+		let ptr = ((this.readPtr + this.stride) - this.leftArm) % this.stride;
+		const len = Math.min(1 + this.leftArm + this.rightArm, this.buffer.length);
+		for (let i = 0; i < len; ++i, ptr = (ptr + 1) % this.stride)
+			yield this.buffer[ptr];
+	}
+
+	get value(): T
+	{
+		return this.buffer[this.readPtr];
+	}
+
+	eatArm()
+	{
+		this.readPtr = (this.readPtr + 1) % this.stride;
+		return this.rightArm-- > 0;
+	}
+
+	feed(value: T)
+	{
+		this.buffer[this.writePtr] = value;
+		if (++this.writePtr >= this.stride)
+			this.writePtr = 0;
+		if (this.size++ >= this.armSize + 1) {
+			this.readPtr = (this.readPtr + 1) % this.stride;
+			if (++this.leftArm > this.armSize)
+				this.leftArm = this.armSize;
+		}
+	}
+
+	forEach(iteratee: Predicate<T>)
+	{
+		let ptr = ((this.readPtr + this.stride) - this.leftArm) % this.stride;
+		const len = Math.min(1 + this.leftArm + this.rightArm, this.buffer.length);
+		for (let i = 0; i < len; ++i, ptr = (ptr + 1) % this.stride) {
+			if (!iteratee(this.buffer[ptr]))
+				return false;
+		}
+		return true;
+	}
+}
+
 class ConcatSeq<T> implements Sequence<T>
 {
 	private sources: Sequence<T>[] = [];
@@ -553,42 +617,15 @@ class FatMapSeq<T, R> implements Sequence<R>
 
 	*[Symbol.iterator]()
 	{
-		const bufferSize = this.windowSize * 2 + 1;
-		const window = new Array<T>(bufferSize);
-		let readPtr = 0;
-		let writePtr = 0;
-		let readLag = bufferSize;
-		const chungus = {
-			value: undefined as unknown as T,
-			at: (position: number, defaultValue: T) => {
-                const min = ((readPtr + bufferSize) - writePtr) % bufferSize;
-                const max = bufferSize - min;
-                if (position < -min || position >= max || Math.abs(position) > this.windowSize)
-                    return defaultValue;
-                position += bufferSize + readPtr;
-				return window[position % bufferSize];
-			}
-		}
+		const chungus = new ChungusSeq<T>(this.windowSize)
+		let lag = this.windowSize + 1;
 		for (const value of this.source) {
-			window[writePtr++] = value;
-			writePtr %= bufferSize;
-			if (--readLag <= 0) {
-				if (readLag === 0) {
-					for (let i = 0; i < this.windowSize; ++i) {
-						chungus.value = window[readPtr];
-						yield* sequenceOf(this.selector(chungus));
-						readPtr = (readPtr + 1) % bufferSize;
-					}
-				}
-				chungus.value = window[readPtr];
+			chungus.feed(value);
+			if (--lag <= 0)
 				yield* sequenceOf(this.selector(chungus));
-				readPtr = (readPtr + 1) % bufferSize;
-			}
 		}
-		while (readPtr !== writePtr) {
-			chungus.value = window[readPtr];
+		while (chungus.eatArm()) {
 			yield* sequenceOf(this.selector(chungus));
-			readPtr = (readPtr + 1) % bufferSize;
 		}
 	}
 }
