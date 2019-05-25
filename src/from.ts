@@ -214,7 +214,7 @@ class Query<T> implements Iterable<T>
 		return new Query(new WithoutSource(this.source, exclusions));
 	}
 
-	fatMap<R>(selector: Selector<Chungus<T>, Queryable<R>>, windowSize = 1)
+	fatMap<R>(selector: Selector<Chungus<T>, R>, windowSize = 1)
 	{
 		return new Query(new FatMapSource(this.source, selector, windowSize));
 	}
@@ -417,8 +417,8 @@ class Query<T> implements Iterable<T>
 		return arrayOf(this.source);
 	}
 
-	where<P extends T>(predicate: TypePredicate<T, P>): Query<P>
 	where(predicate: Predicate<T>): Query<T>
+	where<P extends T>(predicate: TypePredicate<T, P>): Query<P>
 	where(predicate: Predicate<T>)
 	{
 		return new Query(new WhereSource(this.source, predicate));
@@ -526,7 +526,7 @@ class ChungusSource<T> implements Source<T>, Chungus<T>
 		return this.rightArm-- > 0;
 	}
 
-	push(value: T)
+	feed(value: T)
 	{
 		this.buffer[this.writePtr] = value;
 		if (++this.writePtr >= this.stride)
@@ -602,11 +602,11 @@ class DistinctSource<T, K> implements Source<T>
 
 class FatMapSource<T, R> implements Source<R>
 {
-	private selector: Selector<Chungus<T>, Queryable<R>>;
+	private selector: Selector<Chungus<T>, R>;
 	private source: Source<T>;
 	private windowSize: number;
 
-	constructor(source: Source<T>, selector: Selector<Chungus<T>, Queryable<R>>, windowSize: number)
+	constructor(source: Source<T>, selector: Selector<Chungus<T>, R>, windowSize: number)
 	{
 		this.source = source;
 		this.selector = selector;
@@ -615,15 +615,16 @@ class FatMapSource<T, R> implements Source<R>
 
 	*[Symbol.iterator]()
 	{
+		// your small business is going to be squeezed out by Big Chungus.
 		const chungus = new ChungusSource<T>(this.windowSize)
 		let lag = this.windowSize + 1;
 		for (const value of this.source) {
-			chungus.push(value);
+			chungus.feed(value);
 			if (--lag <= 0)
-				yield* sourceOf(this.selector(chungus));
+				yield this.selector(chungus);
 		}
 		while (chungus.advance())
-			yield* sourceOf(this.selector(chungus));
+			yield this.selector(chungus);
 	}
 
 	forEach(iteratee: Predicate<R>)
@@ -631,18 +632,15 @@ class FatMapSource<T, R> implements Source<R>
 		const chungus = new ChungusSource<T>(this.windowSize)
 		let lag = this.windowSize + 1;
 		const keepGoing = iterateOver(this.source, (value) => {
-			chungus.push(value);
-			if (--lag <= 0) {
-				const results = sourceOf(this.selector(chungus));
-				return iterateOver(results, iteratee);
-			}
+			chungus.feed(value);
+			if (--lag <= 0)
+				return iteratee(this.selector(chungus));
 			return true;
 		});
 		if (!keepGoing)
 			return false;
 		while (chungus.advance()) {
-			const results = sourceOf(this.selector(chungus));
-			if (!iterateOver(results, iteratee))
+			if (!iteratee(this.selector(chungus)))
 				return false;
 		}
 		return true;
