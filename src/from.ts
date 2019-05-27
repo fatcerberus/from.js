@@ -40,27 +40,6 @@ type Selector<T, R> = (value: T) => R;
 type TypePredicate<T, P extends T> = (value: T) => value is P;
 type ZipSelector<T, U, R> = (lValue: T, rValue: U) => R;
 
-type TypeOfResult =
-	| 'bigint'
-	| 'boolean'
-	| 'function'
-	| 'number'
-	| 'object'
-	| 'string'
-	| 'symbol'
-	| 'undefined';
-
-type TypeOf<K extends TypeOfResult> = {
-	bigint: bigint,
-	boolean: boolean,
-	function: (...args: never[]) => unknown,
-	number: number,
-	object: object | null,
-	string: string,
-	symbol: symbol,
-	undefined: undefined,
-}[K];
-
 interface Chungus<T> extends Iterable<T>
 {
 	readonly value: T;
@@ -295,12 +274,6 @@ class Query<T> implements Iterable<T>
 			return true;
 		});
 		return result;
-	}
-
-	ofType<K extends TypeOfResult>(...types: K[]): Query<TypeOf<K>>
-	{
-		const typeSet = new Set<TypeOfResult>(types);
-		return this.where(it => typeSet.has(typeof it));
 	}
 
 	orderBy<K>(keySelector: Selector<T, K>, direction: 'asc' | 'desc' = 'asc')
