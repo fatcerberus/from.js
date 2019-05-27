@@ -48,7 +48,9 @@ interface Chungus<T> extends Iterable<T>
 export = from;
 function from<T>(...sources: Queryable<T>[])
 {
-	return new Query(new ConcatSource(...sources));
+	return sources.length === 1
+		? new Query(sourceOf(sources[0]))
+		: new Query(new ConcatSource(...sources));
 }
 
 class Query<T> implements Iterable<T>
@@ -841,9 +843,13 @@ class ZipSource<T, U, R> implements Iterable<R>
 	}
 }
 
+function isIterable<T>(source: Queryable<T>): source is Iterable<T>
+{
+	return Symbol.iterator in source;
+}
+
 function sourceOf<T>(queryable: Queryable<T>)
 {
-	return 'length' in queryable
-		? new ArrayLikeSource(queryable)
-		: queryable;
+	return isIterable(queryable) ? queryable
+		: new ArrayLikeSource(queryable);
 }
