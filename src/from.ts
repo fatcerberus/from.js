@@ -45,11 +45,6 @@ interface Chungus<T> extends Iterable<T>
 	readonly value: T;
 }
 
-interface Source<T> extends Iterable<T>
-{
-	forEach?(iteratee: Predicate<T>): boolean;
-}
-
 export = from;
 function from<T>(...sources: Queryable<T>[])
 {
@@ -60,9 +55,9 @@ class Query<T> implements Iterable<T>
 {
 	readonly [Symbol.toStringTag] = "Query";
 
-	protected source: Source<T>;
+	protected source: Iterable<T>;
 
-	constructor(source: Source<T>)
+	constructor(source: Iterable<T>)
 	{
 		this.source = source;
 	}
@@ -75,21 +70,19 @@ class Query<T> implements Iterable<T>
 	aggregate<R>(aggregator: Aggregator<T, R>, seedValue: R)
 	{
 		let accumulator = seedValue;
-		iterateOver(this.source, value => {
+
+		for (const value of this.source)
 			accumulator = aggregator(accumulator, value);
-			return true;
-		});
 		return accumulator;
 	}
 
 	all(predicate: Predicate<T>)
 	{
-		let matched = true;
-		iterateOver(this.source, value => {
-			matched = predicate(value);
-			return matched;
-		});
-		return matched;
+		for (const value of this.source) {
+			if (!predicate(value))
+				return false;
+		}
+		return true;
 	}
 
 	allIn(values: Queryable<T>)
@@ -100,13 +93,11 @@ class Query<T> implements Iterable<T>
 
 	any(predicate: Predicate<T>)
 	{
-		let foundIt = false;
-		iterateOver(this.source, value => {
+		for (const value of this.source) {
 			if (predicate(value))
-				foundIt = true;
-			return !foundIt;
-		});
-		return foundIt;
+				return true;
+		}
+		return false;
 	}
 
 	anyIn(values: Queryable<T>)
@@ -132,11 +123,10 @@ class Query<T> implements Iterable<T>
 	{
 		let count = 0;
 		let sum = 0;
-		iterateOver(this.source, (value) => {
-			++count;
+		for (const value of this.source) {
 			sum += value;
-			return true;
-		});
+			++count;
+		}
 		return sum / count;
 	}
 
@@ -152,22 +142,22 @@ class Query<T> implements Iterable<T>
 
 	count()
 	{
-		let n = 0;
-		iterateOver(this.source, () => (++n, true));
-		return n;
+		let count = 0;
+		for (const value of this.source)
+			++count;
+		return count;
 	}
 
 	countBy<K>(keySelector: Selector<T, K>)
 	{
 		const counts = new Map<K, number>();
-		iterateOver(this.source, (value) => {
+		for (const value of this.source) {
 			const key = keySelector(value);
 			let count = counts.get(key);
 			if (count === undefined)
 				count = 0;
 			counts.set(key, count++);
-			return true;
-		});
+		}
 		return counts;
 	}
 
@@ -179,12 +169,11 @@ class Query<T> implements Iterable<T>
 	elementAt(position: number)
 	{
 		let index = 0;
-		let element: T | undefined;
-		iterateOver(this.source, value => {
-			element = value;
-			return index !== position;
-		});
-		return element;
+		for (const value of this.source) {
+			if (index++ === position)
+				return value;
+		}
+		return undefined;
 	}
 
 	except(...blacklists: Queryable<T>[])
@@ -200,36 +189,29 @@ class Query<T> implements Iterable<T>
 
 	first(predicate: Predicate<T>)
 	{
-		let result: T | undefined;
-		iterateOver(this.source, value => {
-			if (predicate(value)) {
-				result = value;
-				return false;
-			}
-			return true;
-		});
-		return result;
+		for (const value of this.source) {
+			if (predicate(value))
+				return value;
+		}
+		return undefined;
 	}
 
 	forEach(iteratee: Iteratee<T>)
 	{
-		return iterateOver(this.source, it => {
-			iteratee(it);
-			return true;
-		});
+		for (const value of this.source)
+			iteratee(value);
 	}
 
 	groupBy<K>(keySelector: Selector<T, K>)
 	{
 		const groups = new Map<K, T[]>();
-		iterateOver(this.source, (value) => {
+		for (const value of this.source) {
 			const key = keySelector(value);
 			let list = groups.get(key);
 			if (list === undefined)
 				groups.set(key, list = []);
 			list.push(value);
-			return true;
-		});
+		}
 		return groups;
 	}
 
@@ -268,11 +250,10 @@ class Query<T> implements Iterable<T>
 	last(predicate: Predicate<T>)
 	{
 		let result: T | undefined;
-		iterateOver(this.source, (value) => {
+		for (const value of this.source) {
 			if (predicate(value))
 				result = value;
-			return true;
-		});
+		}
 		return result;
 	}
 
@@ -387,7 +368,7 @@ class Query<T> implements Iterable<T>
 
 	toArray()
 	{
-		return arrayOf(this.source);
+		return Array.from(this.source);
 	}
 
 	where(predicate: Predicate<T>): Query<T>
@@ -421,7 +402,7 @@ class SortQuery<T, K> extends Query<T>
 	}
 }
 
-class ArrayLikeSource<T> implements Source<T>
+class ArrayLikeSource<T> implements Iterable<T>
 {
 	private array: ArrayLike<T>;
 
@@ -435,18 +416,9 @@ class ArrayLikeSource<T> implements Source<T>
 		for (let i = 0, len = this.array.length; i < len; ++i)
 			yield this.array[i];
 	}
-
-	forEach(iteratee: Predicate<T>)
-	{
-		for (let i = 0, len = this.array.length; i < len; ++i) {
-			if (!iteratee(this.array[i]))
-				return false;
-		}
-		return true;
-	}
 }
 
-class ChungusSource<T> implements Source<T>, Chungus<T>
+class ChungusSource<T> implements Iterable<T>, Chungus<T>
 {
 	private armSize: number;
 	private buffer: T[];
@@ -479,17 +451,6 @@ class ChungusSource<T> implements Source<T>, Chungus<T>
 		return this.buffer[this.readPtr];
 	}
 
-	forEach(iteratee: Predicate<T>)
-	{
-		let ptr = ((this.readPtr + this.stride) - this.leftArm) % this.stride;
-		const len = 1 + this.leftArm + this.rightArm;
-		for (let i = 0; i < len; ++i, ptr = (ptr + 1) % this.stride) {
-			if (!iteratee(this.buffer[ptr]))
-				return false;
-		}
-		return true;
-	}
-
 	advance()
 	{
 		if (++this.readPtr >= this.stride)
@@ -509,9 +470,9 @@ class ChungusSource<T> implements Source<T>, Chungus<T>
 	}
 }
 
-class ConcatSource<T> implements Source<T>
+class ConcatSource<T> implements Iterable<T>
 {
-	private sources: Source<T>[] = [];
+	private sources: Iterable<T>[] = [];
 
 	constructor(...sources: Queryable<T>[])
 	{
@@ -524,23 +485,14 @@ class ConcatSource<T> implements Source<T>
 		for (let i = 0, len = this.sources.length; i < len; ++i)
 			yield* this.sources[i];
 	}
-
-	forEach(iteratee: Predicate<T>)
-	{
-		for (let i = 0, len = this.sources.length; i < len; ++i) {
-			if (!iterateOver(this.sources[i], iteratee))
-				return false;
-		}
-		return true;
-	}
 }
 
-class DistinctSource<T, K> implements Source<T>
+class DistinctSource<T, K> implements Iterable<T>
 {
 	private keySelector: Selector<T, K>
-	private source: Source<T>;
+	private source: Iterable<T>;
 
-	constructor(source: Source<T>, keySelector: Selector<T, K>)
+	constructor(source: Iterable<T>, keySelector: Selector<T, K>)
 	{
 		this.source = source;
 		this.keySelector = keySelector;
@@ -557,29 +509,15 @@ class DistinctSource<T, K> implements Source<T>
 			}
 		}
 	}
-
-	forEach(iteratee: Predicate<T>)
-	{
-		const foundKeys = new Set<K>();
-		return iterateOver(this.source, value => {
-			const key = this.keySelector(value);
-			if (!foundKeys.has(key)) {
-				foundKeys.add(key);
-				if (!iteratee(value))
-					return false;
-			}
-			return true;
-		});
-	}
 }
 
-class FatMapSource<T, R> implements Source<R>
+class FatMapSource<T, R> implements Iterable<R>
 {
 	private selector: Selector<Chungus<T>, R>;
-	private source: Source<T>;
+	private source: Iterable<T>;
 	private windowSize: number;
 
-	constructor(source: Source<T>, selector: Selector<Chungus<T>, R>, windowSize: number)
+	constructor(source: Iterable<T>, selector: Selector<Chungus<T>, R>, windowSize: number)
 	{
 		this.source = source;
 		this.selector = selector;
@@ -599,33 +537,14 @@ class FatMapSource<T, R> implements Source<R>
 		while (chungus.advance())
 			yield this.selector(chungus);
 	}
-
-	forEach(iteratee: Predicate<R>)
-	{
-		const chungus = new ChungusSource<T>(this.windowSize)
-		let lag = this.windowSize + 1;
-		const keepGoing = iterateOver(this.source, (value) => {
-			chungus.feed(value);
-			if (--lag <= 0)
-				return iteratee(this.selector(chungus));
-			return true;
-		});
-		if (!keepGoing)
-			return false;
-		while (chungus.advance()) {
-			if (!iteratee(this.selector(chungus)))
-				return false;
-		}
-		return true;
-	}
 }
 
-class IntersperseSource<T> implements Source<T>
+class IntersperseSource<T> implements Iterable<T>
 {
-	private source: Source<T>;
+	private source: Iterable<T>;
 	private value: T;
 
-	constructor(source: Source<T>, value: T)
+	constructor(source: Iterable<T>, value: T)
 	{
 		this.source = source;
 		this.value = value;
@@ -641,29 +560,14 @@ class IntersperseSource<T> implements Source<T>
 			firstElement = false;
 		}
 	}
-
-	forEach(iteratee: Predicate<T>)
-	{
-		let firstElement = true;
-		return iterateOver(this.source, (value) => {
-			if (!firstElement) {
-				if (!iteratee(this.value))
-					return false;
-			}
-			if (!iteratee(value))
-				return false;
-			firstElement = false;
-			return true;
-		});
-	}
 }
 
-class OrderBySource<T, K> implements Source<T>
+class OrderBySource<T, K> implements Iterable<T>
 {
 	private keyMakers: { keySelector: Selector<T, K>, descending: boolean }[];
-	private source: Source<T>;
+	private source: Iterable<T>;
 
-	constructor(source: Source<T>, keySelector: Selector<T, K>, descending: boolean, auxiliary = false)
+	constructor(source: Iterable<T>, keySelector: Selector<T, K>, descending: boolean, auxiliary = false)
 	{
 		const keyMaker = { keySelector, descending };
 		if (auxiliary && source instanceof OrderBySource) {
@@ -678,35 +582,17 @@ class OrderBySource<T, K> implements Source<T>
 
 	*[Symbol.iterator]()
 	{
-		const results = this.computeResults();
-		for (let i = 0, len = results.length; i < len; ++i)
-			yield results[i].value;
-	}
-
-	forEach(iteratee: Predicate<T>)
-	{
-		const results = this.computeResults();
-		for (let i = 0, len = results.length; i < len; ++i) {
-			if (!iteratee(results[i].value))
-				return false;
-		}
-		return true;
-	}
-
-	private computeResults()
-	{
 		const keyLists: K[][] = [];
 		const results: { index: number, value: T }[] = [];
 		let index = 0;
-		iterateOver(this.source, (value) => {
+		for (const value of this.source) {
 			const keyList = new Array<K>(this.keyMakers.length);
 			for (let i = 0, len = this.keyMakers.length; i < len; ++i)
 				keyList[i] = this.keyMakers[i].keySelector(value);
 			keyLists.push(keyList);
 			results.push({ index: index++, value });
-			return true;
-		});
-		return results.sort((a, b) => {
+		}
+		results.sort((a, b) => {
 			const aKeys = keyLists[a.index];
 			const bKeys = keyLists[b.index];
 			for (let i = 0, len = this.keyMakers.length; i < len; ++i) {
@@ -718,15 +604,17 @@ class OrderBySource<T, K> implements Source<T>
 			}
 			return a.index - b.index;
 		});
+		for (let i = 0, len = results.length; i < len; ++i)
+			yield results[i].value;
 	}
 }
 
-class SelectSource<T, R> implements Source<R>
+class SelectSource<T, R> implements Iterable<R>
 {
 	private selector: Selector<T, R>;
-	private source: Source<T>;
+	private source: Iterable<T>;
 
-	constructor(source: Source<T>, selector: Selector<T, R>)
+	constructor(source: Iterable<T>, selector: Selector<T, R>)
 	{
 		this.source = source;
 		this.selector = selector;
@@ -737,19 +625,14 @@ class SelectSource<T, R> implements Source<R>
 		for (const value of this.source)
 			yield this.selector(value);
 	}
-
-	forEach(iteratee: Predicate<R>)
-	{
-		return iterateOver(this.source, it => iteratee(this.selector(it)));
-	}
 }
 
-class SelectManySource<T, U> implements Source<U>
+class SelectManySource<T, U> implements Iterable<U>
 {
 	private selector: Selector<T, Queryable<U>>;
-	private source: Source<T>;
+	private source: Iterable<T>;
 
-	constructor(source: Source<T>, selector: Selector<T, Queryable<U>>)
+	constructor(source: Iterable<T>, selector: Selector<T, Queryable<U>>)
 	{
 		this.source = source;
 		this.selector = selector;
@@ -760,22 +643,14 @@ class SelectManySource<T, U> implements Source<U>
 		for (const value of this.source)
 			yield* sourceOf(this.selector(value));
 	}
-
-	forEach(iteratee: Predicate<U>)
-	{
-		return iterateOver(this.source, (value) => {
-			const results = sourceOf(this.selector(value));
-			return iterateOver(results, iteratee);
-		});
-	}
 }
 
-class SkipSource<T> implements Source<T>
+class SkipSource<T> implements Iterable<T>
 {
 	private count: number;
-	private source: Source<T>;
+	private source: Iterable<T>;
 
-	constructor(source: Source<T>, count: number)
+	constructor(source: Iterable<T>, count: number)
 	{
 		this.source = source;
 		this.count = count;
@@ -789,23 +664,14 @@ class SkipSource<T> implements Source<T>
 				yield value;
 		}
 	}
-
-	forEach(iteratee: Predicate<T>)
-	{
-		let skipsLeft = this.count;
-		return iterateOver(this.source, value => {
-			return skipsLeft-- <= 0 ? iteratee(value)
-				: true;
-		});
-	}
 }
 
-class SkipLastSource<T> implements Source<T>
+class SkipLastSource<T> implements Iterable<T>
 {
 	private count: number;
-	private source: Source<T>;
+	private source: Iterable<T>;
 
-	constructor(source: Source<T>, count: number)
+	constructor(source: Iterable<T>, count: number)
 	{
 		this.source = source;
 		this.count = count;
@@ -823,30 +689,14 @@ class SkipLastSource<T> implements Source<T>
 			ptr = (ptr + 1) % this.count;
 		}
 	}
-
-	forEach(iteratee: Predicate<T>)
-	{
-		const buffer = new Array<T>(this.count);
-		let ptr = 0;
-		let skipsLeft = this.count;
-		return iterateOver(this.source, (value) => {
-			if (skipsLeft-- <= 0) {
-				if (!iteratee(buffer[ptr]))
-					return false;
-			}
-			buffer[ptr] = value;
-			ptr = (ptr + 1) % this.count;
-			return true;
-		});
-	}
 }
 
-class SkipWhileSource<T> implements Source<T>
+class SkipWhileSource<T> implements Iterable<T>
 {
 	private predicate: Predicate<T>;
-	private source: Source<T>;
+	private source: Iterable<T>;
 
-	constructor(source: Source<T>, predicate: Predicate<T>)
+	constructor(source: Iterable<T>, predicate: Predicate<T>)
 	{
 		this.source = source;
 		this.predicate = predicate;
@@ -862,25 +712,14 @@ class SkipWhileSource<T> implements Source<T>
 				yield value;
 		}
 	}
-
-	forEach(iteratee: Predicate<T>)
-	{
-		let onTheTake = false;
-		return iterateOver(this.source, value => {
-			if (!onTheTake && !this.predicate(value))
-				onTheTake = true;
-			return onTheTake ? iteratee(value)
-				: false;
-		});
-	}
 }
 
-class TakeSource<T> implements Source<T>
+class TakeSource<T> implements Iterable<T>
 {
 	private count: number;
-	private source: Source<T>;
+	private source: Iterable<T>;
 
-	constructor(source: Source<T>, count: number)
+	constructor(source: Iterable<T>, count: number)
 	{
 		this.source = source;
 		this.count = count;
@@ -895,23 +734,14 @@ class TakeSource<T> implements Source<T>
 			yield value;
 		}
 	}
-
-	forEach(iteratee: Predicate<T>)
-	{
-		let takesLeft = this.count;
-		return iterateOver(this.source, value => {
-			return takesLeft-- > 0 ? iteratee(value)
-				: false
-		});
-	}
 }
 
-class TakeWhileSource<T> implements Source<T>
+class TakeWhileSource<T> implements Iterable<T>
 {
 	private predicate: Predicate<T>;
-	private source: Source<T>;
+	private source: Iterable<T>;
 
-	constructor(source: Source<T>, predicate: Predicate<T>)
+	constructor(source: Iterable<T>, predicate: Predicate<T>)
 	{
 		this.source = source;
 		this.predicate = predicate;
@@ -925,23 +755,14 @@ class TakeWhileSource<T> implements Source<T>
 			yield value;
 		}
 	}
-
-	forEach(iteratee: Predicate<T>)
-	{
-		return iterateOver(this.source, value => {
-			if (!this.predicate(value))
-				return false;
-			return iteratee(value);
-		});
-	}
 }
 
-class ThruSource<T, R> implements Source<R>
+class ThruSource<T, R> implements Iterable<R>
 {
-	private source: Source<T>;
+	private source: Iterable<T>;
 	private transformer: Selector<T[], Queryable<R>>;
 
-	constructor(source: Source<T>, transformer: Selector<T[], Queryable<R>>)
+	constructor(source: Iterable<T>, transformer: Selector<T[], Queryable<R>>)
 	{
 		this.source = source;
 		this.transformer = transformer;
@@ -949,27 +770,18 @@ class ThruSource<T, R> implements Source<R>
 
 	[Symbol.iterator]()
 	{
-		const oldValues: T[] = arrayOf(this.source);
+		const oldValues: T[] = Array.from(this.source);
 		const newValues = this.transformer(oldValues);
 		return sourceOf(newValues)[Symbol.iterator]();
 	}
-
-	forEach(iteratee: Predicate<R>)
-	{
-		const oldValues: T[] = arrayOf(this.source);
-		const newValues = this.transformer(oldValues);
-		return iterateOver(sourceOf(newValues), value => {
-			return iteratee(value);
-		});
-	}
 }
 
-class WhereSource<T> implements Source<T>
+class WhereSource<T> implements Iterable<T>
 {
 	private predicate: Predicate<T>;
-	private source: Source<T>;
+	private source: Iterable<T>;
 
-	constructor(source: Source<T>, predicate: Predicate<T>)
+	constructor(source: Iterable<T>, predicate: Predicate<T>)
 	{
 		this.source = source;
 		this.predicate = predicate;
@@ -982,22 +794,14 @@ class WhereSource<T> implements Source<T>
 				yield value;
 		}
 	}
-
-	forEach(iteratee: Predicate<T>)
-	{
-		return iterateOver(this.source, value => {
-			return this.predicate(value) ? iteratee(value)
-				: true;
-		});
-	}
 }
 
-class WithoutSource<T> implements Source<T>
+class WithoutSource<T> implements Iterable<T>
 {
-	private source: Source<T>;
+	private source: Iterable<T>;
 	private values: Set<T>
 
-	constructor(source: Source<T>, values: Set<T>)
+	constructor(source: Iterable<T>, values: Set<T>)
 	{
 		this.source = source;
 		this.values = values;
@@ -1010,23 +814,15 @@ class WithoutSource<T> implements Source<T>
 				yield value;
 		}
 	}
-
-	forEach(iteratee: Predicate<T>)
-	{
-		return iterateOver(this.source, value => {
-			return !this.values.has(value) ? iteratee(value)
-				: true;
-		});
-	}
 }
 
-class ZipSource<T, U, R> implements Source<R>
+class ZipSource<T, U, R> implements Iterable<R>
 {
-	private leftSource: Source<T>;
-	private rightSource: Source<U>;
+	private leftSource: Iterable<T>;
+	private rightSource: Iterable<U>;
 	private selector: ZipSelector<T, U, R>;
 
-	constructor(leftSource: Source<T>, rightSource: Source<U>, selector: ZipSelector<T, U, R>)
+	constructor(leftSource: Iterable<T>, rightSource: Iterable<U>, selector: ZipSelector<T, U, R>)
 	{
 		this.leftSource = leftSource;
 		this.rightSource = rightSource;
@@ -1042,43 +838,6 @@ class ZipSource<T, U, R> implements Source<R>
 				break;
 			yield this.selector(value, result.value);
 		}
-	}
-
-	forEach(iteratee: Predicate<R>)
-	{
-		const iter = this.rightSource[Symbol.iterator]();
-		let result: IteratorResult<U>;
-		return iterateOver(this.leftSource, value => {
-			if ((result = iter.next()).done)
-				return false;
-			return iteratee(this.selector(value, result.value));
-		});
-	}
-}
-
-function arrayOf<T>(source: Source<T>)
-{
-	const values: T[] = [];
-	iterateOver(source, (value) => {
-		values.push(value);
-		return true;
-	});
-	return values;
-}
-
-function iterateOver<T>(source: Source<T>, iteratee: Predicate<T>)
-{
-	if (source.forEach !== undefined) {
-		// prefer forEach if it exists (better performance!)
-		return source.forEach(iteratee);
-	}
-	else {
-		// no forEach, fall back on [Symbol.iterator]
-		for (const value of source) {
-			if (!iteratee(value))
-				return false;
-		}
-		return true;
 	}
 }
 
