@@ -306,6 +306,11 @@ class Query<T> implements Iterable<T>
 		return new Query(new SelectSource(this.source, selector));
 	}
 
+	selectAll()
+	{
+		return new Query(this.toArray())
+	}
+
 	selectMany<R>(selector: Selector<T, Queryable<R>>)
 	{
 		return new Query(new SelectManySource(this.source, selector));
