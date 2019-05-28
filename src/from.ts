@@ -40,7 +40,7 @@ type Selector<T, R> = (value: T) => R;
 type TypePredicate<T, P extends T> = (value: T) => value is P;
 type ZipSelector<T, U, R> = (lValue: T, rValue: U) => R;
 
-interface Chungus<T> extends Iterable<T>
+interface Chub<T> extends Iterable<T>
 {
 	readonly value: T;
 }
@@ -184,7 +184,7 @@ class Query<T> implements Iterable<T>
 		return new Query(new WithoutSource(this.source, exclusions));
 	}
 
-	fatMap<R>(selector: Selector<Chungus<T>, R>, windowSize = 1)
+	fatMap<R>(selector: Selector<Chub<T>, R>, windowSize = 1)
 	{
 		return new Query(new FatMapSource(this.source, selector, windowSize));
 	}
@@ -420,7 +420,7 @@ class ArrayLikeSource<T> implements Iterable<T>
 	}
 }
 
-class ChungusSource<T> implements Iterable<T>, Chungus<T>
+class ChubSource<T> implements Iterable<T>, Chub<T>
 {
 	private armSize: number;
 	private buffer: T[];
@@ -432,23 +432,20 @@ class ChungusSource<T> implements Iterable<T>, Chungus<T>
 
 	constructor(windowSize: number)
 	{
-		// it's called a chungus because, being a circular buffer, it's round...
-		// just like Big Chungus!  *MUNCH*
-		this.stride = windowSize * 2 + 1;  // this is how fat he can be
+		this.stride = windowSize * 2 + 1;
 		this.buffer = new Array<T>(this.stride);
 		this.armSize = windowSize;
 	}
 
 	*[Symbol.iterator]()
 	{
-		// it's time to circumnavigate the chungus...
 		let ptr = ((this.readPtr + this.stride) - this.leftArm) % this.stride;
 		const len = 1 + this.leftArm + this.rightArm;
 		for (let i = 0; i < len; ++i, ptr = (ptr + 1) % this.stride)
 			yield this.buffer[ptr];
 	}
 
-	get value(): T
+	get value()
 	{
 		return this.buffer[this.readPtr];
 	}
@@ -462,13 +459,13 @@ class ChungusSource<T> implements Iterable<T>, Chungus<T>
 		return this.rightArm-- > 0;
 	}
 
-	feed(value: T)
+	push(value: T)
 	{
 		this.buffer[this.writePtr] = value;
 		if (++this.writePtr >= this.stride)
 			this.writePtr = 0;
 		if (++this.rightArm > this.armSize)
-			this.advance();  // *munch*
+			this.advance();
 	}
 }
 
@@ -515,11 +512,11 @@ class DistinctSource<T, K> implements Iterable<T>
 
 class FatMapSource<T, R> implements Iterable<R>
 {
-	private selector: Selector<Chungus<T>, R>;
+	private selector: Selector<Chub<T>, R>;
 	private source: Iterable<T>;
 	private windowSize: number;
 
-	constructor(source: Iterable<T>, selector: Selector<Chungus<T>, R>, windowSize: number)
+	constructor(source: Iterable<T>, selector: Selector<Chub<T>, R>, windowSize: number)
 	{
 		this.source = source;
 		this.selector = selector;
@@ -528,16 +525,15 @@ class FatMapSource<T, R> implements Iterable<R>
 
 	*[Symbol.iterator]()
 	{
-		// your small business is going to be squeezed out by Big Chungus.
-		const chungus = new ChungusSource<T>(this.windowSize)
+		const chub = new ChubSource<T>(this.windowSize)
 		let lag = this.windowSize + 1;
 		for (const value of this.source) {
-			chungus.feed(value);
+			chub.push(value);
 			if (--lag <= 0)
-				yield this.selector(chungus);
+				yield this.selector(chub);
 		}
-		while (chungus.advance())
-			yield this.selector(chungus);
+		while (chub.advance())
+			yield this.selector(chub);
 	}
 }
 
