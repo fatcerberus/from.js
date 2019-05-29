@@ -568,7 +568,7 @@ class IntersperseSource<T> implements Iterable<T>
 class MemoSource<T> implements Iterable<T>
 {
 	private source: Iterable<T>;
-	private memo?: T[];
+	private ranOnce = false;
 
 	constructor(source: Iterable<T>)
 	{
@@ -577,9 +577,11 @@ class MemoSource<T> implements Iterable<T>
 
 	[Symbol.iterator]()
 	{
-		if (this.memo === undefined)
-			this.memo = Array.from(this.source);
-		return this.memo[Symbol.iterator]();
+		if (!this.ranOnce) {
+			this.source = Array.from(this.source);
+			this.ranOnce = true;
+		}
+		return this.source[Symbol.iterator]();
 	}
 }
 
