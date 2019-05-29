@@ -259,6 +259,11 @@ class Query<T> implements Iterable<T>
 		return result;
 	}
 
+	memoize()
+	{
+		return new Query(new MemoSource(this.source));
+	}
+
 	orderBy<K>(keySelector: Selector<T, K>, direction: 'asc' | 'desc' = 'asc')
 	{
 		return new SortQuery(new OrderBySource(this.source, keySelector, direction === 'desc'));
@@ -304,11 +309,6 @@ class Query<T> implements Iterable<T>
 	select<R>(selector: Selector<T, R>)
 	{
 		return new Query(new SelectSource(this.source, selector));
-	}
-
-	selectAll()
-	{
-		return new Query(this.toArray())
 	}
 
 	selectMany<R>(selector: Selector<T, Queryable<R>>)
@@ -562,6 +562,24 @@ class IntersperseSource<T> implements Iterable<T>
 			yield value;
 			firstElement = false;
 		}
+	}
+}
+
+class MemoSource<T> implements Iterable<T>
+{
+	private source: Iterable<T>;
+	private memo?: T[];
+
+	constructor(source: Iterable<T>)
+	{
+		this.source = source;
+	}
+
+	[Symbol.iterator]()
+	{
+		if (this.memo === undefined)
+			this.memo = Array.from(this.source);
+		return this.memo[Symbol.iterator]();
 	}
 }
 
