@@ -329,6 +329,20 @@ class Query<T> implements Iterable<T>
 		});
 	}
 
+	single(predicate: Predicate<T>)
+	{
+		let count = 0;
+		let lastResult = undefined;
+		for (const value of this.source) {
+			if (predicate(value)) {
+				if (++count > 1)
+					throw new Error("Query would return more than one result");
+				lastResult = value;
+			}
+		}
+		return lastResult;
+	}
+
 	skip(count: number)
 	{
 		return new Query(new SkipSource(this.source, count));
