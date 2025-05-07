@@ -1,6 +1,6 @@
 /*
  *  from.js - LINQ for JavaScript
- *  Copyright (c) 2019-2024, Fat Cerberus
+ *  Copyright (c) 2019-2025, Fat Cerberus
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -30,34 +30,19 @@
  *  POSSIBILITY OF SUCH DAMAGE.
 **/
 
-type Queryable<T> = T[] | ArrayLike<T> | Iterable<T>;
-
-type Aggregator<T, R> = (accumulator: R, value: T) => R;
-type Iteratee<T> = (value: T) => void;
-type JoinPredicate<T, U> = (lValue: T, rValue: U) => boolean;
-type Predicate<T> = (value: T) => boolean;
-type Selector<T, R> = (value: T) => R;
-type TypePredicate<T, P extends T> = (value: T) => value is P;
-type ZipSelector<T, U, R> = (lValue: T, rValue: U) => R;
-
-interface Chub<T> extends Iterable<T>
-{
-	readonly value: T;
-}
-
-export = from;
-function from<T>(...sources: Queryable<T>[])
+export
+function from(...sources)
 {
 	return sources.length === 1
 		? new Query(sourceOf(sources[0]))
 		: new Query(new ConcatSource(...sources));
 }
 
-class Query<T> implements Iterable<T>
+class Query
 {
-	protected source: Iterable<T>;
+	source;
 
-	constructor(source: Iterable<T>)
+	constructor(source)
 	{
 		this.source = source;
 	}
@@ -67,16 +52,15 @@ class Query<T> implements Iterable<T>
 		return this.source[Symbol.iterator]();
 	}
 
-	aggregate<R>(aggregator: Aggregator<T, R>, seedValue: R)
+	aggregate(aggregator, seedValue)
 	{
 		let accumulator = seedValue;
-
 		for (const value of this.source)
 			accumulator = aggregator(accumulator, value);
 		return accumulator;
 	}
 
-	all(predicate: Predicate<T>)
+	all(predicate)
 	{
 		for (const value of this.source) {
 			if (!predicate(value))
@@ -85,13 +69,13 @@ class Query<T> implements Iterable<T>
 		return true;
 	}
 
-	allIn(values: Queryable<T>)
+	allIn(values)
 	{
 		const valueSet = new Set(sourceOf(values));
 		return this.all(it => valueSet.has(it));
 	}
 
-	any(predicate: Predicate<T>)
+	any(predicate)
 	{
 		for (const value of this.source) {
 			if (predicate(value))
@@ -100,26 +84,26 @@ class Query<T> implements Iterable<T>
 		return false;
 	}
 
-	anyIn(values: Queryable<T>)
+	anyIn(values)
 	{
 		const valueSet = new Set(sourceOf(values));
 		return this.any(it => valueSet.has(it));
 	}
 
-	anyIs(value: T)
+	anyIs(value)
 	{
 		const predicate = value !== value
-			? (toCheck: T) => toCheck !== toCheck
-			: (toCheck: T) => toCheck === value;
+			? toCheck => toCheck !== toCheck
+			: toCheck => toCheck === value;
 		return this.any(predicate);
 	}
 
-	apply<V, R>(this: Query<(value: V) => R>, values: Queryable<V>)
+	apply(values)
 	{
 		return this.selectMany(fn => from(values).select(fn));
 	}
 
-	average(this: Query<number>)
+	average()
 	{
 		let count = 0;
 		let sum = 0;
@@ -130,12 +114,12 @@ class Query<T> implements Iterable<T>
 		return sum / count;
 	}
 
-	besides(iteratee: Iteratee<T>)
+	besides(iteratee)
 	{
 		return this.select(it => (iteratee(it), it));
 	}
 
-	concat(...sources: Queryable<T>[])
+	concat(...sources)
 	{
 		return new Query(new ConcatSource(this.source, ...sources));
 	}
@@ -148,9 +132,9 @@ class Query<T> implements Iterable<T>
 		return count;
 	}
 
-	countBy<K>(keySelector: Selector<T, K>)
+	countBy(keySelector)
 	{
-		const counts = new Map<K, number>();
+		const counts = new Map();
 		for (const value of this.source) {
 			const key = keySelector(value);
 			let count = counts.get(key);
@@ -161,12 +145,12 @@ class Query<T> implements Iterable<T>
 		return counts;
 	}
 
-	distinct<K>(keySelector: Selector<T, K>)
+	distinct(keySelector)
 	{
 		return new Query(new DistinctSource(this.source, keySelector));
 	}
 
-	elementAt(position: number)
+	elementAt(position)
 	{
 		let index = 0;
 		for (const value of this.source) {
@@ -176,18 +160,18 @@ class Query<T> implements Iterable<T>
 		return undefined;
 	}
 
-	except(...blacklists: Queryable<T>[])
+	except(...blacklists)
 	{
 		const exclusions = new Set(from(blacklists).selectMany(it => it));
 		return new Query(new WithoutSource(this.source, exclusions));
 	}
 
-	fatMap<R>(selector: Selector<Chub<T>, R>, windowSize = 1)
+	fatMap(selector, windowSize = 1)
 	{
 		return new Query(new FatMapSource(this.source, selector, windowSize));
 	}
 
-	first(predicate: Predicate<T>)
+	first(predicate)
 	{
 		for (const value of this.source) {
 			if (predicate(value))
@@ -196,15 +180,15 @@ class Query<T> implements Iterable<T>
 		return undefined;
 	}
 
-	forEach(iteratee: Iteratee<T>)
+	forEach(iteratee)
 	{
 		for (const value of this.source)
 			iteratee(value);
 	}
 
-	groupBy<K>(keySelector: Selector<T, K>)
+	groupBy(keySelector)
 	{
-		const groups = new Map<K, T[]>();
+		const groups = new Map();
 		for (const value of this.source) {
 			const key = keySelector(value);
 			let list = groups.get(key);
@@ -215,7 +199,7 @@ class Query<T> implements Iterable<T>
 		return groups;
 	}
 
-	groupJoin<U, R>(joinSource: Queryable<U>, predicate: JoinPredicate<T, U>, selector: ZipSelector<T, Iterable<U>, R>)
+	groupJoin(joinSource, predicate, selector)
 	{
 		return this.select(lValue => {
 			const rValues = from(joinSource)
@@ -224,22 +208,22 @@ class Query<T> implements Iterable<T>
 		});
 	}
 
-	intercalate(this: Query<Queryable<T>>, values: Queryable<T>)
+	intercalate(values)
 	{
 		return this.intersperse(values).selectMany(it => it);
 	}
 
-	intersperse(value: T)
+	intersperse(value)
 	{
 		return new Query(new IntersperseSource(this.source, value));
 	}
 
-	invoke<V extends unknown[], R>(this: Query<(...args: V) => R>, ...args: V)
+	invoke(...args)
 	{
 		return this.select(fn => fn(...args));
 	}
 
-	join<U, R>(joinSource: Queryable<U>, predicate: JoinPredicate<T, U>, selector: ZipSelector<T, U, R>)
+	join(joinSource, predicate, selector)
 	{
 		return this.selectMany(lValue =>
 			from(joinSource)
@@ -247,9 +231,9 @@ class Query<T> implements Iterable<T>
 				.select(it => selector(lValue, it)));
 	}
 
-	last(predicate: Predicate<T>)
+	last(predicate)
 	{
-		let result: T | undefined;
+		let result;
 		for (const value of this.source) {
 			if (predicate(value))
 				result = value;
@@ -262,17 +246,17 @@ class Query<T> implements Iterable<T>
 		return new Query(new MemoSource(this.source));
 	}
 
-	orderBy<K>(keySelector: Selector<T, K>, direction: 'asc' | 'desc' = 'asc')
+	orderBy(keySelector, direction = 'asc')
 	{
 		return new SortQuery(new OrderBySource(this.source, keySelector, direction === 'desc'));
 	}
 
-	plus(...values: T[])
+	plus(...values)
 	{
 		return new Query(new ConcatSource(this.source, values));
 	}
 
-	random(count: number)
+	random(count)
 	{
 		return this.thru((values) => {
 			let samples = [];
@@ -289,7 +273,7 @@ class Query<T> implements Iterable<T>
 		return this.thru(values => values.reverse());
 	}
 
-	sample(count: number)
+	sample(count)
 	{
 		return this.thru((values) => {
 			const nSamples = Math.min(Math.max(count, 0), values.length);
@@ -304,12 +288,12 @@ class Query<T> implements Iterable<T>
 		});
 	}
 
-	select<R>(selector: Selector<T, R>)
+	select(selector)
 	{
 		return new Query(new SelectSource(this.source, selector));
 	}
 
-	selectMany<R>(selector: Selector<T, Queryable<R>>)
+	selectMany(selector)
 	{
 		return new Query(new SelectManySource(this.source, selector));
 	}
@@ -327,7 +311,7 @@ class Query<T> implements Iterable<T>
 		});
 	}
 
-	single(predicate: Predicate<T>)
+	single(predicate)
 	{
 		let count = 0;
 		let lastResult = undefined;
@@ -341,32 +325,32 @@ class Query<T> implements Iterable<T>
 		return lastResult;
 	}
 
-	skip(count: number)
+	skip(count)
 	{
 		return new Query(new SkipSource(this.source, count));
 	}
 
-	skipLast(count: number)
+	skipLast(count)
 	{
 		return new Query(new SkipLastSource(this.source, count));
 	}
 
-	skipWhile(predicate: Predicate<T>)
+	skipWhile(predicate)
 	{
 		return new Query(new SkipWhileSource(this.source, predicate));
 	}
 
-	sum(this: Query<number>)
+	sum()
 	{
 		return this.aggregate((acc, value) => acc + value, 0);
 	}
 
-	take(count: number)
+	take(count)
 	{
 		return new Query(new TakeSource(this.source, count));
 	}
 
-	takeLast(count: number)
+	takeLast(count)
 	{
 		// takeLast can't be lazily evaluated because we don't know where to
 		// start until we've seen the final element.
@@ -375,12 +359,12 @@ class Query<T> implements Iterable<T>
 		});
 	}
 
-	takeWhile(predicate: Predicate<T>)
+	takeWhile(predicate)
 	{
 		return new Query(new TakeWhileSource(this.source, predicate));
 	}
 
-	thru<R>(transformer: Selector<T[], Queryable<R>>)
+	thru(transformer)
 	{
 		return new Query(new ThruSource(this.source, transformer));
 	}
@@ -390,42 +374,40 @@ class Query<T> implements Iterable<T>
 		return Array.from(this.source);
 	}
 
-	where(predicate: Predicate<T>): Query<T>
-	where<P extends T>(predicate: TypePredicate<T, P>): Query<P>
-	where(predicate: Predicate<T>)
+	where(predicate)
 	{
 		return new Query(new WhereSource(this.source, predicate));
 	}
 
-	without(...values: T[])
+	without(...values)
 	{
 		return new Query(new WithoutSource(this.source, new Set(values)));
 	}
 
-	zip<U, R>(zipSource: Queryable<U>, selector: ZipSelector<T, U, R>)
+	zip(zipSource, selector)
 	{
 		return new Query(new ZipSource(this.source, sourceOf(zipSource), selector));
 	}
 }
 
-class SortQuery<T, K> extends Query<T>
+class SortQuery extends Query
 {
-	constructor(source: OrderBySource<T, K>)
+	constructor(source)
 	{
 		super(source);
 	}
 
-	thenBy<K>(keySelector: Selector<T, K>, direction: 'asc' | 'desc' = 'asc')
+	thenBy(keySelector, direction = 'asc')
 	{
 		return new SortQuery(new OrderBySource(this.source, keySelector, direction === 'desc', true));
 	}
 }
 
-class ArrayLikeSource<T> implements Iterable<T>
+class ArrayLikeSource
 {
-	#array: ArrayLike<T>;
+	#array;
 
-	constructor(array: ArrayLike<T>)
+	constructor(array)
 	{
 		this.#array = array;
 	}
@@ -437,20 +419,20 @@ class ArrayLikeSource<T> implements Iterable<T>
 	}
 }
 
-class ChubSource<T> implements Iterable<T>, Chub<T>
+class ChubSource
 {
-	#armSize: number;
-	#buffer: T[];
+	#armSize;
+	#buffer;
 	#leftArm = -1;
 	#readPtr = -1;
 	#rightArm = 0;
-	#stride: number;
+	#stride;
 	#writePtr = 0;
 
-	constructor(windowSize: number)
+	constructor(windowSize)
 	{
 		this.#stride = windowSize * 2 + 1;
-		this.#buffer = new Array<T>(this.#stride);
+		this.#buffer = new Array(this.#stride);
 		this.#armSize = windowSize;
 	}
 
@@ -476,7 +458,7 @@ class ChubSource<T> implements Iterable<T>, Chub<T>
 		return this.#rightArm-- > 0;
 	}
 
-	push(value: T)
+	push(value)
 	{
 		this.#buffer[this.#writePtr] = value;
 		if (++this.#writePtr >= this.#stride)
@@ -486,11 +468,11 @@ class ChubSource<T> implements Iterable<T>, Chub<T>
 	}
 }
 
-class ConcatSource<T> implements Iterable<T>
+class ConcatSource
 {
-	#sources: Iterable<T>[] = [];
+	#sources = [];
 
-	constructor(...sources: Queryable<T>[])
+	constructor(...sources)
 	{
 		for (let i = 0, len = sources.length; i < len; ++i)
 			this.#sources.push(sourceOf(sources[i]));
@@ -503,12 +485,12 @@ class ConcatSource<T> implements Iterable<T>
 	}
 }
 
-class DistinctSource<T, K> implements Iterable<T>
+class DistinctSource
 {
-	#keySelector: Selector<T, K>
-	#source: Iterable<T>;
+	#keySelector;
+	#source;
 
-	constructor(source: Iterable<T>, keySelector: Selector<T, K>)
+	constructor(source, keySelector)
 	{
 		this.#source = source;
 		this.#keySelector = keySelector;
@@ -516,7 +498,7 @@ class DistinctSource<T, K> implements Iterable<T>
 
 	*[Symbol.iterator]()
 	{
-		const foundKeys = new Set<K>();
+		const foundKeys = new Set();
 		for (const value of this.#source) {
 			const key = this.#keySelector(value);
 			if (!foundKeys.has(key)) {
@@ -527,13 +509,13 @@ class DistinctSource<T, K> implements Iterable<T>
 	}
 }
 
-class FatMapSource<T, R> implements Iterable<R>
+class FatMapSource
 {
-	#selector: Selector<Chub<T>, R>;
-	#source: Iterable<T>;
-	#windowSize: number;
+	#selector;
+	#source;
+	#windowSize;
 
-	constructor(source: Iterable<T>, selector: Selector<Chub<T>, R>, windowSize: number)
+	constructor(source, selector, windowSize)
 	{
 		this.#source = source;
 		this.#selector = selector;
@@ -542,7 +524,7 @@ class FatMapSource<T, R> implements Iterable<R>
 
 	*[Symbol.iterator]()
 	{
-		const chub = new ChubSource<T>(this.#windowSize)
+		const chub = new ChubSource(this.#windowSize)
 		let lag = this.#windowSize + 1;
 		for (const value of this.#source) {
 			chub.push(value);
@@ -554,12 +536,12 @@ class FatMapSource<T, R> implements Iterable<R>
 	}
 }
 
-class IntersperseSource<T> implements Iterable<T>
+class IntersperseSource
 {
-	#source: Iterable<T>;
-	#value: T;
+	#source;
+	#value;
 
-	constructor(source: Iterable<T>, value: T)
+	constructor(source, value)
 	{
 		this.#source = source;
 		this.#value = value;
@@ -577,12 +559,12 @@ class IntersperseSource<T> implements Iterable<T>
 	}
 }
 
-class MemoSource<T> implements Iterable<T>
+class MemoSource
 {
-	#source: Iterable<T>;
+	#source;
 	#ranOnce = false;
 
-	constructor(source: Iterable<T>)
+	constructor(source)
 	{
 		this.#source = source;
 	}
@@ -597,12 +579,12 @@ class MemoSource<T> implements Iterable<T>
 	}
 }
 
-class OrderBySource<T, K> implements Iterable<T>
+class OrderBySource
 {
-	#keyMakers: { keySelector: Selector<T, K>, descending: boolean }[];
-	#source: Iterable<T>;
+	#keyMakers;
+	#source;
 
-	constructor(source: Iterable<T>, keySelector: Selector<T, K>, descending: boolean, auxiliary = false)
+	constructor(source, keySelector, descending, auxiliary = false)
 	{
 		const keyMaker = { keySelector, descending };
 		if (auxiliary && source instanceof OrderBySource) {
@@ -617,11 +599,11 @@ class OrderBySource<T, K> implements Iterable<T>
 
 	*[Symbol.iterator]()
 	{
-		const keyLists: K[][] = [];
-		const results: { index: number, value: T }[] = [];
+		const keyLists = [];
+		const results = [];
 		let index = 0;
 		for (const value of this.#source) {
-			const keyList = new Array<K>(this.#keyMakers.length);
+			const keyList = new Array(this.#keyMakers.length);
 			for (let i = 0, len = this.#keyMakers.length; i < len; ++i)
 				keyList[i] = this.#keyMakers[i].keySelector(value);
 			keyLists.push(keyList);
@@ -644,12 +626,12 @@ class OrderBySource<T, K> implements Iterable<T>
 	}
 }
 
-class SelectSource<T, R> implements Iterable<R>
+class SelectSource
 {
-	#selector: Selector<T, R>;
-	#source: Iterable<T>;
+	#selector;
+	#source;
 
-	constructor(source: Iterable<T>, selector: Selector<T, R>)
+	constructor(source, selector)
 	{
 		this.#source = source;
 		this.#selector = selector;
@@ -662,12 +644,12 @@ class SelectSource<T, R> implements Iterable<R>
 	}
 }
 
-class SelectManySource<T, U> implements Iterable<U>
+class SelectManySource
 {
-	#selector: Selector<T, Queryable<U>>;
-	#source: Iterable<T>;
+	#selector;
+	#source;
 
-	constructor(source: Iterable<T>, selector: Selector<T, Queryable<U>>)
+	constructor(source, selector)
 	{
 		this.#source = source;
 		this.#selector = selector;
@@ -680,12 +662,12 @@ class SelectManySource<T, U> implements Iterable<U>
 	}
 }
 
-class SkipSource<T> implements Iterable<T>
+class SkipSource
 {
-	#count: number;
-	#source: Iterable<T>;
+	#count;
+	#source;
 
-	constructor(source: Iterable<T>, count: number)
+	constructor(source, count)
 	{
 		this.#source = source;
 		this.#count = count;
@@ -701,12 +683,12 @@ class SkipSource<T> implements Iterable<T>
 	}
 }
 
-class SkipLastSource<T> implements Iterable<T>
+class SkipLastSource
 {
-	#count: number;
-	#source: Iterable<T>;
+	#count;
+	#source;
 
-	constructor(source: Iterable<T>, count: number)
+	constructor(source, count)
 	{
 		this.#source = source;
 		this.#count = count;
@@ -714,7 +696,7 @@ class SkipLastSource<T> implements Iterable<T>
 
 	*[Symbol.iterator]()
 	{
-		const buffer = new Array<T>(this.#count);
+		const buffer = new Array(this.#count);
 		let ptr = 0;
 		let skipsLeft = this.#count;
 		for (const value of this.#source) {
@@ -726,12 +708,12 @@ class SkipLastSource<T> implements Iterable<T>
 	}
 }
 
-class SkipWhileSource<T> implements Iterable<T>
+class SkipWhileSource
 {
-	#predicate: Predicate<T>;
-	#source: Iterable<T>;
+	#predicate;
+	#source;
 
-	constructor(source: Iterable<T>, predicate: Predicate<T>)
+	constructor(source, predicate)
 	{
 		this.#source = source;
 		this.#predicate = predicate;
@@ -749,12 +731,12 @@ class SkipWhileSource<T> implements Iterable<T>
 	}
 }
 
-class TakeSource<T> implements Iterable<T>
+class TakeSource
 {
-	#count: number;
-	#source: Iterable<T>;
+	#count;
+	#source;
 
-	constructor(source: Iterable<T>, count: number)
+	constructor(source, count)
 	{
 		this.#source = source;
 		this.#count = count;
@@ -771,12 +753,12 @@ class TakeSource<T> implements Iterable<T>
 	}
 }
 
-class TakeWhileSource<T> implements Iterable<T>
+class TakeWhileSource
 {
-	#predicate: Predicate<T>;
-	#source: Iterable<T>;
+	#predicate;
+	#source;
 
-	constructor(source: Iterable<T>, predicate: Predicate<T>)
+	constructor(source, predicate)
 	{
 		this.#source = source;
 		this.#predicate = predicate;
@@ -792,12 +774,12 @@ class TakeWhileSource<T> implements Iterable<T>
 	}
 }
 
-class ThruSource<T, R> implements Iterable<R>
+class ThruSource
 {
-	#source: Iterable<T>;
-	#transformer: Selector<T[], Queryable<R>>;
+	#source;
+	#transformer;
 
-	constructor(source: Iterable<T>, transformer: Selector<T[], Queryable<R>>)
+	constructor(source, transformer)
 	{
 		this.#source = source;
 		this.#transformer = transformer;
@@ -805,18 +787,18 @@ class ThruSource<T, R> implements Iterable<R>
 
 	[Symbol.iterator]()
 	{
-		const oldValues: T[] = Array.from(this.#source);
+		const oldValues = Array.from(this.#source);
 		const newValues = this.#transformer(oldValues);
 		return sourceOf(newValues)[Symbol.iterator]();
 	}
 }
 
-class WhereSource<T> implements Iterable<T>
+class WhereSource
 {
-	#predicate: Predicate<T>;
-	#source: Iterable<T>;
+	#predicate;
+	#source;
 
-	constructor(source: Iterable<T>, predicate: Predicate<T>)
+	constructor(source, predicate)
 	{
 		this.#source = source;
 		this.#predicate = predicate;
@@ -831,12 +813,12 @@ class WhereSource<T> implements Iterable<T>
 	}
 }
 
-class WithoutSource<T> implements Iterable<T>
+class WithoutSource
 {
-	#source: Iterable<T>;
-	#values: Set<T>
+	#source;
+	#values;
 
-	constructor(source: Iterable<T>, values: Set<T>)
+	constructor(source, values)
 	{
 		this.#source = source;
 		this.#values = values;
@@ -851,13 +833,13 @@ class WithoutSource<T> implements Iterable<T>
 	}
 }
 
-class ZipSource<T, U, R> implements Iterable<R>
+class ZipSource
 {
-	#leftSource: Iterable<T>;
-	#rightSource: Iterable<U>;
-	#selector: ZipSelector<T, U, R>;
+	#leftSource;
+	#rightSource;
+	#selector;
 
-	constructor(leftSource: Iterable<T>, rightSource: Iterable<U>, selector: ZipSelector<T, U, R>)
+	constructor(leftSource, rightSource, selector)
 	{
 		this.#leftSource = leftSource;
 		this.#rightSource = rightSource;
@@ -867,7 +849,7 @@ class ZipSource<T, U, R> implements Iterable<R>
 	*[Symbol.iterator]()
 	{
 		const iter = this.#rightSource[Symbol.iterator]();
-		let result: IteratorResult<U>;
+		let result;
 		for (const value of this.#leftSource) {
 			if ((result = iter.next()).done)
 				break;
@@ -876,12 +858,12 @@ class ZipSource<T, U, R> implements Iterable<R>
 	}
 }
 
-function isIterable<T>(source: Queryable<T>): source is Iterable<T>
+function isIterable(source)
 {
 	return Symbol.iterator in source;
 }
 
-function sourceOf<T>(queryable: Queryable<T>)
+function sourceOf(queryable)
 {
 	return isIterable(queryable) ? queryable
 		: new ArrayLikeSource(queryable);
